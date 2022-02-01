@@ -1,4 +1,3 @@
-from os import stat
 from django.contrib.auth.hashers import make_password
 from django.shortcuts import render
 from .models import FriendRequest, SBUser, Post, Comment
@@ -16,6 +15,22 @@ import json
 
 
 class RegisterUserView(generics.CreateAPIView):
+    '''
+    It creates user with request.data={
+        "user":{
+            "first_name": " ",
+            "last_name": " ",
+            "email": " ",
+            "password": "",
+            "confirm_password": " "
+        },
+        "mobile_number": " ",
+        "date_of_birth" : " ",
+        "image": " "
+    }
+    It automatically sets username = email.
+    '''
+
     def create(self, request, *args, **kwargs):
         if len(request.data) == 0:
             raise NotAcceptable(detail="No data provided")
@@ -67,6 +82,10 @@ class RegisterUserView(generics.CreateAPIView):
 
 class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
+        '''
+        It updates the profile and takes SBUser id as primary key.
+        There are many fields like favourite_books, your_address, you_college etc which can be filled here.
+        '''
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         id = kwargs['pk']
@@ -109,6 +128,13 @@ class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
 
 class Postview(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
+        '''
+        request.data = {
+            "description" : " ",
+            "image" : "  "
+        } 
+        It posts a post on SIneBook.
+        '''
         if len(request.data) == 0:
             raise NotAcceptable(detail="No data provided.")
         request.data['user'] = self.request.user.id
@@ -122,6 +148,9 @@ class Postview(generics.CreateAPIView):
 
 class PostLikeView(generics.UpdateAPIView):
     def update(self, request, *args, **kwargs):
+        '''
+        It likes the post of given pk if it is not liked earlier, else it will unlike it.
+        '''
         kwargs['partial'] = True
         post = Post.objects.get(id=kwargs['pk'])
         likes = set(post.likes.all().values_list('pk', flat=True))
@@ -138,6 +167,10 @@ class PostLikeView(generics.UpdateAPIView):
 
 class CommentView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
+        '''
+        Using this API, one can comment on a post as well as on a comment also. 
+        And those posts which are set to commentable by friends only or none have been managed also.
+        '''
         if len(request.data) == 0:
             raise NotAcceptable(detail="No data provided.")
         if request.data.get('post') is None:
@@ -162,6 +195,10 @@ class CommentView(generics.CreateAPIView):
 
 
 class CommentLikeView(generics.UpdateAPIView):
+    '''
+    This API works same as post like api. It likes any comment.
+    '''
+
     def update(self, request, *args, **kwargs):
         kwargs['partial'] = True
         comment = Comment.objects.get(id=kwargs['pk'])
@@ -179,6 +216,9 @@ class CommentLikeView(generics.UpdateAPIView):
 
 class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
     def retrieve(self, request, *args, **kwargs):
+        '''
+        Retrieves any post and manages who_can_see and who_can_comment fields also.
+        '''
         post_id = kwargs['pk']
         post = Post.objects.get(id=post_id)
         post_user = post.user_id
@@ -229,6 +269,9 @@ class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
 
 class CommentListView(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
+        '''
+        Lists comments of the post whose pk is provided.
+        '''
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Please provide post id.")
         post_id = kwargs['pk']
@@ -262,6 +305,9 @@ class CommentListView(generics.ListAPIView):
 
 class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
     def retrieve(self, request, *args, **kwargs):
+        '''
+        retrieves comment with the management of who_can_see section of post.
+        '''
         comment_id = kwargs['pk']
         comment = Comment.objects.get(id=comment_id)
         post = comment.post
@@ -324,6 +370,9 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
 
 class PostListsofProfileView(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
+        '''
+        Lists all the posts of a given user.
+        '''
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Please provide user id.")
         return super().list(request, *args, **kwargs)
@@ -346,6 +395,9 @@ class PostListsofProfileView(generics.ListAPIView):
 
 class ListFriends(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
+        '''
+        Lists friends of a given user.
+        '''
         if kwargs.get('pk') is None:
             raise NotAcceptable(
                 detail="Please provide the user id whose friend you seek.")
@@ -379,6 +431,9 @@ class RetrieveProfileView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
 
     def retrieve(self, request, *args, **kwargs):
+        '''
+        retrieves profile with the management of display_email, display_mobile and display_personal_info.
+        '''
         if kwargs['pk'] is None:
             raise NotAcceptable(detail="Please provide user id.")
         if self.request.user.id == kwargs['pk']:
@@ -445,6 +500,9 @@ class RetrieveProfileView(generics.RetrieveAPIView):
 
 class FriendRequestView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
+        '''
+        Sends friend request to the user.
+        '''
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Please provide user id.")
         request.data['user'] = kwargs['pk']
@@ -471,6 +529,9 @@ class AcceptCancelRequestView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
 
     def update(self, request, *args, **kwargs):
+        '''
+        accepts or denies the request with bool = True or False.
+        '''
         if kwargs['pk'] is None:
             raise NotAcceptable(detail="Provide Request id.")
         if request.data.get('bool') is None:
