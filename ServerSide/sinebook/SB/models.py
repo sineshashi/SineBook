@@ -1,0 +1,72 @@
+from django.core.validators import MinValueValidator
+from django.db import models
+from django.contrib.auth.models import User
+from phonenumber_field.modelfields import PhoneNumberField
+
+Display_Choices = (
+    ('Public', 'Public'),
+    ('Friends', 'Friends'),
+    ('None', 'None')
+)
+
+
+class SBUser(models.Model):
+    user = models.OneToOneField(
+        User, blank=False, null=False, on_delete=models.CASCADE)
+    mobile_number = PhoneNumberField()
+    date_of_birth = models.DateField()
+    image = models.ImageField(null=True, blank=True)
+    your_first_school = models.CharField(blank=True, null=True, max_length=255)
+    your_college = models.CharField(blank=True, null=True, max_length=255)
+    your_occupation = models.CharField(blank=True, null=True, max_length=255)
+    your_address = models.CharField(blank=True, null=True, max_length=255)
+    favourite_movies = models.CharField(blank=True, null=True, max_length=255)
+    favourite_books = models.CharField(blank=True, null=True, max_length=255)
+    tell_your_friends_about_you = models.TextField(
+        max_length=500, blank=True, null=True)
+    friends = models.ManyToManyField("self", blank=True)
+    display_email = models.CharField(
+        choices=Display_Choices, max_length=255, default='Public')
+    display_mobile = models.CharField(
+        choices=Display_Choices, max_length=255, default='None')
+    display_personal_info = models.CharField(
+        choices=Display_Choices, max_length=255, default='Public')
+    display_friends = models.CharField(
+        choices=Display_Choices, max_length=255, default='Public')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.user.username
+
+
+class Post(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    description = models.TextField(max_length=200, blank=True, null=True)
+    image = models.ImageField(null=True, blank=True)
+    likes = models.ManyToManyField(
+        User, blank=True, related_name="liking_users")
+    number_of_likes = models.IntegerField(
+        validators=[MinValueValidator(0)], default=0)
+    number_of_comments = models.IntegerField(
+        validators=[MinValueValidator(0)], default=0)
+    who_can_see = models.CharField(
+        choices=Display_Choices, max_length=255, default='Public')
+    who_can_comment = models.CharField(
+        choices=Display_Choices, max_length=255, default='Public')
+    posted_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class Comment(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE)
+    comment_on_which_user_can_comment = models.ForeignKey(
+        'self', on_delete=models.CASCADE, null=True, blank=True, related_name='comment_object')
+    comment = models.TextField(max_length=255)
+    likes = models.ManyToManyField(
+        User, blank=True, related_name="comment_likers")
+    number_of_likes = models.IntegerField(
+        validators=[MinValueValidator(0)], default=0)
+    commented_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
