@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import SBUser, Post, Comment
+from .models import FriendRequest, SBUser, Post, Comment
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -137,3 +137,12 @@ class CommentUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = ['comment', 'updated_at']
+class FriendRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FriendRequest
+        fields = ['sender', 'user', 'requested_at']
+
+class AcceptRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model= SBUser
+        fields = ['friends']

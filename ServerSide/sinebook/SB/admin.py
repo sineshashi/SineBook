@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import SBUser, Post, Comment
+from .models import SBUser, Post, Comment, FriendRequest
 
 
 @admin.register(SBUser)
@@ -33,3 +33,6 @@ class CommentAdmin(admin.ModelAdmin):
         likes_count = instance.likes.all().count()
         Comment.objects.filter(id = instance.id).update(number_of_likes = likes_count)
         return likes_count
+@admin.register(FriendRequest)
+class FriendRequestAdmin(admin.ModelAdmin):
+    list_display = ['id', 'sender', 'user', 'requested_at']

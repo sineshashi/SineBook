@@ -1,9 +1,10 @@
+from os import stat
 from django.contrib.auth.hashers import make_password
 from django.shortcuts import render
-from .models import SBUser, Post, Comment
+from .models import FriendRequest, SBUser, Post, Comment
 from django.contrib.auth.models import User
 from rest_framework import generics, status
-from .serializers import (RegisterSBUserSerializer, UpdateProfileSerialier, PostSerializer,
+from .serializers import (AcceptRequestSerializer, FriendRequestSerializer, RegisterSBUserSerializer, UpdateProfileSerialier, PostSerializer,
  PostLikeSerializer, CommentSerializer, CommentLikeSerializer, PostRetrieveSerializer, PostRDSerializer, PostUSerializer,
  CommentLRDSerializerForPoster, CommentLRSerializerForUser, CommentRDSerializerForCommentor, CommentUpdateSerializer,
  RetrieveProfileSerializer, ListFriendsSerializer)
@@ -393,4 +394,69 @@ class RetrieveProfileView(generics.RetrieveAPIView):
                 else:
                     pass
         return Response(data, status=status.HTTP_200_OK)
-        
+class FriendRequestView(generics.ListCreateAPIView):
+    def create(self, request, *args, **kwargs):
+        if kwargs.get('pk') is None:
+            raise NotAcceptable(detail="Please provide user id.")
+        request.data['user'] = kwargs['pk']
+        request.data['sender'] = self.request.user.id
+        user = SBUser.objects.get(user_id = request.data['user'])
+        sender = SBUser.objects.get(user_id = request.data['sender'])
+        if user in sender.friends.all():
+            raise NotAcceptable(detail="You are already friends.")
+        if user == sender:
+            raise NotAcceptable(detail = "You can send request to yourself.")
+        return super().create(request, *args, **kwargs)
+    def get_queryset(self):
+        return FriendRequest.objects.filter(user_id = self.request.user.id)
+    serializer_class = FriendRequestSerializer
+    permission_classes = [IsAuthenticated]
+
+class AcceptCancelRequestView(generics.RetrieveUpdateAPIView):
+    '''
+    For accept, bool = True
+    For cancel, bool = False
+    '''
+    permission_classes = [IsAuthenticated]
+    def update(self, request, *args, **kwargs):
+        if kwargs['pk'] is None:
+            raise NotAcceptable(detail="Provide Request id.")
+        if request.data.get('bool') is None:
+            raise NotAcceptable(detail="Please provie bool, True for accept and False for cancel.")
+        friend_request = FriendRequest.objects.get(id = kwargs['pk'])
+        requesting_user = SBUser.objects.get(user_id = self.request.user.id)
+        sender = SBUser.objects.get(user_id = friend_request.sender_id)
+        acceptor = SBUser.objects.get(user_id = friend_request.user_id)
+        if request.data['bool'] == False:
+            if (requesting_user != sender) and (requesting_user != acceptor):
+                raise NotAcceptable(detail="You are not authorized for this action.")
+            else:
+                friend_request.delete()
+                return Response("Request has been cancel", status = status.HTTP_200_OK)
+        if request.data['bool'] == True:
+            if requesting_user != acceptor:
+                raise NotAcceptable(detail="You are not authorized for this action.")
+            else:
+                friends = set(acceptor.friends.values_list('pk', flat=True))
+                friends = list(friends.union({sender.id}))
+                data = {"friends":friends}
+                serializer = AcceptRequestSerializer(acceptor, data=data)
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+                friend_request.delete()
+                return Response(f'You and {sender} are friends now.', status= status.HTTP_200_OK)
+    def retrieve(self, request, *args, **kwargs):
+        if kwargs['pk'] is None:
+            raise NotAcceptable(detail="Provide request id.")
+        friend_request = FriendRequest.objects.get(id = kwargs['pk'])
+        requesting_user = SBUser.objects.get(user_id = self.request.user.id)
+        sender = SBUser.objects.get(user_id = friend_request.sender_id)
+        acceptor = SBUser.objects.get(user_id = friend_request.user_id)
+        if (requesting_user != sender) and (requesting_user != acceptor):
+            raise NotAcceptable(detail="You are not authorized for this action.")
+        else:
+            serializer = FriendRequestSerializer(friend_request)
+            return Response(serializer.data, status = status.HTTP_200_OK)
+
+                
+                
