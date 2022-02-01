@@ -15,12 +15,13 @@ class PostAdmin(admin.ModelAdmin):
 
     def total_number_of_likes(self, instance):
         likes_count = instance.likes.all().count()
-        Post.objects.filter(id= instance.id).update(number_of_likes = likes_count)
+        Post.objects.filter(id=instance.id).update(number_of_likes=likes_count)
         return likes_count
 
     def total_number_of_comments(self, instance):
         comment_count = Comment.objects.filter(post_id=instance.id).count()
-        Post.objects.filter(id = instance.id).update(number_of_comments = comment_count)
+        Post.objects.filter(id=instance.id).update(
+            number_of_comments=comment_count)
         return comment_count
 
 
@@ -31,8 +32,11 @@ class CommentAdmin(admin.ModelAdmin):
 
     def total_number_of_likes(self, instance):
         likes_count = instance.likes.all().count()
-        Comment.objects.filter(id = instance.id).update(number_of_likes = likes_count)
+        Comment.objects.filter(id=instance.id).update(
+            number_of_likes=likes_count)
         return likes_count
+
+
 @admin.register(FriendRequest)
 class FriendRequestAdmin(admin.ModelAdmin):
     list_display = ['id', 'sender', 'user', 'requested_at']

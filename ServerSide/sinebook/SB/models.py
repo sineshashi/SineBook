@@ -72,8 +72,10 @@ class Comment(models.Model):
     commented_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-class FriendRequest(models.Model):
-    sender = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sender")
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sine_book_user")
-    requested_at = models.DateTimeField(auto_now_add=True)
 
+class FriendRequest(models.Model):
+    sender = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="sender")
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="sine_book_user")
+    requested_at = models.DateTimeField(auto_now_add=True)

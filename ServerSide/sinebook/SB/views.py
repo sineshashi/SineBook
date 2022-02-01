@@ -5,9 +5,9 @@ from .models import FriendRequest, SBUser, Post, Comment
 from django.contrib.auth.models import User
 from rest_framework import generics, status
 from .serializers import (AcceptRequestSerializer, FriendRequestSerializer, RegisterSBUserSerializer, UpdateProfileSerialier, PostSerializer,
- PostLikeSerializer, CommentSerializer, CommentLikeSerializer, PostRetrieveSerializer, PostRDSerializer, PostUSerializer,
- CommentLRDSerializerForPoster, CommentLRSerializerForUser, CommentRDSerializerForCommentor, CommentUpdateSerializer,
- RetrieveProfileSerializer, ListFriendsSerializer)
+                          PostLikeSerializer, CommentSerializer, CommentLikeSerializer, PostRetrieveSerializer, PostRDSerializer, PostUSerializer,
+                          CommentLRDSerializerForPoster, CommentLRSerializerForUser, CommentRDSerializerForCommentor, CommentUpdateSerializer,
+                          RetrieveProfileSerializer, ListFriendsSerializer)
 from rest_framework.exceptions import NotAcceptable, NotAuthenticated
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -47,11 +47,14 @@ class RegisterUserView(generics.CreateAPIView):
             except:
                 bool = False
         if bool == False:
-            raise NotAcceptable(detail="Password must contain digits along with alphbets.") 
+            raise NotAcceptable(
+                detail="Password must contain digits along with alphbets.")
         if len(request.data['user']['password']) < 8:
-            raise NotAcceptable(detail= "Password must have at least 8 characters.")
+            raise NotAcceptable(
+                detail="Password must have at least 8 characters.")
         if userdata['password'] != userdata['confirm_password']:
-            raise NotAcceptable(detail="Password and confirm password do not match.")
+            raise NotAcceptable(
+                detail="Password and confirm password do not match.")
         password = userdata.get('password')
         password = make_password(password)
         del request.data['user']['confirm_password']
@@ -61,40 +64,48 @@ class RegisterUserView(generics.CreateAPIView):
     queryset = SBUser.objects.all()
     serializer_class = RegisterSBUserSerializer
 
+
 class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         id = kwargs['pk']
-        requesting_user = SBUser.objects.get(user_id = self.request.user.id)
+        requesting_user = SBUser.objects.get(user_id=self.request.user.id)
         if id != requesting_user.id:
-            raise NotAuthenticated(detail="You are not authorized for this action.")
+            raise NotAuthenticated(
+                detail="You are not authorized for this action.")
         kwargs['partial'] = True
         if request.data.get('user') is not None:
             user = request.data['user']
             if user.get('email') is not None:
                 request.data['user']['username'] = request.data['user']['email']
         return super().update(request, *args, **kwargs)
+
     def retrieve(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         id = kwargs['pk']
-        requesting_user = SBUser.objects.get(user_id = self.request.user.id)
+        requesting_user = SBUser.objects.get(user_id=self.request.user.id)
         if id != requesting_user.id:
-            raise NotAuthenticated(detail="You are not authorized for this action.")
+            raise NotAuthenticated(
+                detail="You are not authorized for this action.")
         return super().retrieve(request, *args, **kwargs)
+
     def destroy(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         id = kwargs['pk']
-        requesting_user = SBUser.objects.get(user_id = self.request.user.id)
+        requesting_user = SBUser.objects.get(user_id=self.request.user.id)
         if id != requesting_user.id:
-            raise NotAuthenticated(detail="You are not authorized for this action.")
+            raise NotAuthenticated(
+                detail="You are not authorized for this action.")
         return super().destroy(request, *args, **kwargs)
+
     def get_queryset(self):
-        return SBUser.objects.filter(user_id = self.request.user.id)
+        return SBUser.objects.filter(user_id=self.request.user.id)
     serializer_class = UpdateProfileSerialier
     permission_classes = [IsAuthenticated]
+
 
 class Postview(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
@@ -108,19 +119,22 @@ class Postview(generics.CreateAPIView):
     serializer_class = PostSerializer
     permission_classes = [IsAuthenticated]
 
+
 class PostLikeView(generics.UpdateAPIView):
     def update(self, request, *args, **kwargs):
         kwargs['partial'] = True
-        post = Post.objects.get(id = kwargs['pk'])
+        post = Post.objects.get(id=kwargs['pk'])
         likes = set(post.likes.all().values_list('pk', flat=True))
         if self.request.user.id in likes:
-            request.data['likes'] = list(likes.difference({self.request.user.id}))
+            request.data['likes'] = list(
+                likes.difference({self.request.user.id}))
         else:
             request.data['likes'] = list(likes.union({self.request.user.id}))
         return super().update(request, *args, **kwargs)
     queryset = Post.objects.all()
-    serializer_class= PostLikeSerializer
+    serializer_class = PostLikeSerializer
     permission_classes = [IsAuthenticated]
+
 
 class CommentView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
@@ -132,67 +146,78 @@ class CommentView(generics.CreateAPIView):
         if request.data.get('comment') is None:
             raise NotAcceptable(detail="Comment is blank.")
         post_id = request.data.get('post')
-        post = Post.objects.get(id = post_id)
+        post = Post.objects.get(id=post_id)
         if post.who_can_comment == 'None':
-            raise NotAcceptable(detail= "User has blocked his comments on this post.")
+            raise NotAcceptable(
+                detail="User has blocked his comments on this post.")
         if post.who_can_comment == 'Friends':
-            sbuser = SBUser.objects.get(user_id = post.user_id)
-            if (self.request.user not in sbuser.friends.all()) and(self.request.user != sbuser.user):
-                raise NotAcceptable(detail="You are not friend of the user and only his/her friends can comment on this post.")
+            sbuser = SBUser.objects.get(user_id=post.user_id)
+            if (self.request.user not in sbuser.friends.all()) and (self.request.user != sbuser.user):
+                raise NotAcceptable(
+                    detail="You are not friend of the user and only his/her friends can comment on this post.")
         return super().create(request, *args, **kwargs)
     queryset = Comment.objects.all()
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
 
+
 class CommentLikeView(generics.UpdateAPIView):
     def update(self, request, *args, **kwargs):
         kwargs['partial'] = True
-        comment = Comment.objects.get(id = kwargs['pk'])
+        comment = Comment.objects.get(id=kwargs['pk'])
         likes = set(comment.likes.all().values_list('pk', flat=True))
         if self.request.user.id in likes:
-            request.data['likes'] = list(likes.difference({self.request.user.id}))
+            request.data['likes'] = list(
+                likes.difference({self.request.user.id}))
         else:
             request.data['likes'] = list(likes.union({self.request.user.id}))
         return super().update(request, *args, **kwargs)
     queryset = Comment.objects.all()
-    serializer_class= CommentLikeSerializer
-    permission_classes = [IsAuthenticated] 
+    serializer_class = CommentLikeSerializer
+    permission_classes = [IsAuthenticated]
+
 
 class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
     def retrieve(self, request, *args, **kwargs):
         post_id = kwargs['pk']
-        post = Post.objects.get(id = post_id)
+        post = Post.objects.get(id=post_id)
         post_user = post.user_id
         requesting_user = self.request.user
-        sbuser = SBUser.objects.get(user_id = post_user)
+        sbuser = SBUser.objects.get(user_id=post_user)
         if post_user != requesting_user.id:
             if post.who_can_see == 'None':
-                raise NotAcceptable(detail="You are not authorized for this action.")
+                raise NotAcceptable(
+                    detail="You are not authorized for this action.")
             if post.who_can_see == 'Friends':
                 if requesting_user not in sbuser.friends.all():
-                    raise NotAcceptable(detail="You are not a friend of the user and he/she has kept this post for friends only.")
+                    raise NotAcceptable(
+                        detail="You are not a friend of the user and he/she has kept this post for friends only.")
         return super().retrieve(request, *args, **kwargs)
+
     def update(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
-            raise NotAcceptable(detail= "Please Provide details.")
-        post = Post.objects.get(id = kwargs['pk'])
+            raise NotAcceptable(detail="Please Provide details.")
+        post = Post.objects.get(id=kwargs['pk'])
         if self.request.user.id != post.user_id:
-            raise NotAcceptable(detail="You are not authorized for this action.")
+            raise NotAcceptable(
+                detail="You are not authorized for this action.")
         kwargs['partial'] = True
         return super().update(request, *args, **kwargs)
-    
+
     def destroy(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
-            raise NotAcceptable(detail= "Please Provide details.")
-        post = Post.objects.get(id = kwargs['pk'])
+            raise NotAcceptable(detail="Please Provide details.")
+        post = Post.objects.get(id=kwargs['pk'])
         if self.request.user.id != post.user_id:
-            raise NotAcceptable(detail="You are not authorized for this action.")
+            raise NotAcceptable(
+                detail="You are not authorized for this action.")
         return super().destroy(request, *args, **kwargs)
-    queryset=Post.objects.all()
+    queryset = Post.objects.all()
+
     def get_serializer_class(self, *args, **kwargs):
-        post = Post.objects.get(id = self.kwargs['pk'])
+        post = Post.objects.get(id=self.kwargs['pk'])
         if self.request.user.id == post.user_id:
-            if (self.request.method == 'PUT') or (self.request.method ==  'PATCH'):
+            if (self.request.method == 'PUT') or (self.request.method == 'PATCH'):
                 return PostUSerializer
             else:
                 return PostRDSerializer
@@ -201,27 +226,32 @@ class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = get_serializer_class
     permission_classes = [IsAuthenticated]
 
+
 class CommentListView(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Please provide post id.")
         post_id = kwargs['pk']
-        post = Post.objects.get(id = post_id)
+        post = Post.objects.get(id=post_id)
         post_user = post.user_id
         requesting_user = self.request.user
-        sbuser = SBUser.objects.get(user_id = post_user)
+        sbuser = SBUser.objects.get(user_id=post_user)
         if post_user != requesting_user.id:
             if post.who_can_see == 'None':
-                raise NotAcceptable(detail="You are not authorized for this action.")
+                raise NotAcceptable(
+                    detail="You are not authorized for this action.")
             if post.who_can_see == 'Friends':
                 if requesting_user not in sbuser.friends.all():
-                    raise NotAcceptable(detail="You are not a friend of the user and he/she has kept this post for friends only.")
+                    raise NotAcceptable(
+                        detail="You are not a friend of the user and he/she has kept this post for friends only.")
         return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
         post_id = self.kwargs['pk']
-        return Comment.objects.filter(post_id = post_id)
+        return Comment.objects.filter(post_id=post_id)
+
     def get_serializer_class(self):
-        post = Post.objects.get(id = self.kwargs['pk'])
+        post = Post.objects.get(id=self.kwargs['pk'])
         if self.request.user.id == post.user_id:
             return CommentLRDSerializerForPoster
         else:
@@ -229,54 +259,60 @@ class CommentListView(generics.ListAPIView):
     serializer_class = get_serializer_class
     permission_classes = [IsAuthenticated]
 
+
 class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
     def retrieve(self, request, *args, **kwargs):
         comment_id = kwargs['pk']
-        comment = Comment.objects.get(id = comment_id)
+        comment = Comment.objects.get(id=comment_id)
         post = comment.post
         post_user = post.user_id
         requesting_user = self.request.user
-        sbuser = SBUser.objects.get(user_id = post_user)
+        sbuser = SBUser.objects.get(user_id=post_user)
         if post_user != requesting_user.id:
             if post.who_can_see == 'None':
-                raise NotAcceptable(detail="You are not authorized for this action.")
+                raise NotAcceptable(
+                    detail="You are not authorized for this action.")
             if post.who_can_see == 'Friends':
                 if requesting_user not in sbuser.friends.all():
-                    raise NotAcceptable(detail="You are not a friend of the user and he/she has kept this post for friends only.")
+                    raise NotAcceptable(
+                        detail="You are not a friend of the user and he/she has kept this post for friends only.")
         return super().retrieve(request, *args, **kwargs)
-    
+
     def update(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         kwargs['partial'] = True
         comment_id = kwargs['pk']
-        comment= Comment.objects.get(id = comment_id)
+        comment = Comment.objects.get(id=comment_id)
         posting_user = comment.post.user_id
         if (self.request.user.id != comment.user_id) or (self.request.user.id != posting_user):
-            raise NotAcceptable(detail="You are not authorized for this action.")
+            raise NotAcceptable(
+                detail="You are not authorized for this action.")
         return super().update(request, *args, **kwargs)
-    
+
     def destroy(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         comment_id = kwargs['pk']
-        comment= Comment.objects.get(id = comment_id)
+        comment = Comment.objects.get(id=comment_id)
         posting_user = comment.post.user_id
         if (self.request.user.id != comment.user_id) or (self.request.user.id != posting_user):
-            raise NotAcceptable(detail="You are not authorized for this action.")
+            raise NotAcceptable(
+                detail="You are not authorized for this action.")
         return super().destroy(request, *args, **kwargs)
     queryset = Comment.objects.all()
+
     def get_serializer_class(self):
         requesting_user = self.request.user
-        commenting_user = Comment.objects.get(id = self.kwargs['pk'])
+        commenting_user = Comment.objects.get(id=self.kwargs['pk'])
         posting_user = commenting_user.post.user
         if requesting_user == posting_user:
-            if (self.request.method == 'PUT') or (self.request.method ==  'PATCH'):
+            if (self.request.method == 'PUT') or (self.request.method == 'PATCH'):
                 return CommentUpdateSerializer
             else:
                 return CommentLRDSerializerForPoster
         elif requesting_user == commenting_user:
-            if (self.request.method == 'PUT') or (self.request.method ==  'PATCH'):
+            if (self.request.method == 'PUT') or (self.request.method == 'PATCH'):
                 return CommentUpdateSerializer
             else:
                 return CommentRDSerializerForCommentor
@@ -285,70 +321,81 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = get_serializer_class
     permission_classes = [IsAuthenticated]
 
+
 class PostListsofProfileView(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Please provide user id.")
         return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
         requesting_user = self.request.user
         requested_userid = self.kwargs['pk']
         if requesting_user.id == requested_userid:
-            return Post.objects.filter(user_id = requested_userid)
+            return Post.objects.filter(user_id=requested_userid)
         else:
-            requesting_sb_user = SBUser.objects.get(user_id = requesting_user.id)
-            requested_sb_user = SBUser.objects.get(user_id = requested_userid)
+            requesting_sb_user = SBUser.objects.get(user_id=requesting_user.id)
+            requested_sb_user = SBUser.objects.get(user_id=requested_userid)
             if requesting_sb_user not in requested_sb_user.friends.all():
-                return Post.objects.filter(user_id = requested_userid, who_can_see = 'Public')
+                return Post.objects.filter(user_id=requested_userid, who_can_see='Public')
             else:
-                return Post.objects.filter(user_id = requested_userid).exclude(who_can_see = 'None')
+                return Post.objects.filter(user_id=requested_userid).exclude(who_can_see='None')
     serializer_class = PostRetrieveSerializer
     permission_classes = [IsAuthenticated]
+
 
 class ListFriends(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
-            raise NotAcceptable(detail="Please provide the user id whose friend you seek.")
+            raise NotAcceptable(
+                detail="Please provide the user id whose friend you seek.")
         return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
         if self.request.user.id == self.kwargs['pk']:
-            sbuser = SBUser.objects.get(user_id = self.request.user.id)
+            sbuser = SBUser.objects.get(user_id=self.request.user.id)
             return sbuser.friends.all()
         else:
-            requested_user = SBUser.objects.get(user_id = self.kwargs['pk'])
+            requested_user = SBUser.objects.get(user_id=self.kwargs['pk'])
             if requested_user.display_friends == 'None':
-                raise NotAcceptable(detail= "You are trying to access friends list of the user who has blocked this service.")
+                raise NotAcceptable(
+                    detail="You are trying to access friends list of the user who has blocked this service.")
             if requested_user.display_friends == 'Friends':
-                requesting_sb_user = SBUser.objects.get(user_id = self.request.user.id)
+                requesting_sb_user = SBUser.objects.get(
+                    user_id=self.request.user.id)
                 if requesting_sb_user not in requested_user.friends.all():
-                    raise NotAcceptable(detail="You are trying to access a private list.")
+                    raise NotAcceptable(
+                        detail="You are trying to access a private list.")
                 else:
                     return requested_user.friends.all()
             else:
-                requested_user = SBUser.objects.get(user_id = self.kwargs['pk'])
+                requested_user = SBUser.objects.get(user_id=self.kwargs['pk'])
                 return requested_user.friends.all()
     serializer_class = ListFriendsSerializer
     permission_classes = [IsAuthenticated]
 
+
 class RetrieveProfileView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
+
     def retrieve(self, request, *args, **kwargs):
         if kwargs['pk'] is None:
             raise NotAcceptable(detail="Please provide user id.")
         if self.request.user.id == kwargs['pk']:
-            requested_data = SBUser.objects.get(user_id = self.request.user)
+            requested_data = SBUser.objects.get(user_id=self.request.user)
             serializer = RetrieveProfileSerializer(requested_data)
-            return Response(serializer.data, status = status.HTTP_200_OK)
+            return Response(serializer.data, status=status.HTTP_200_OK)
         else:
-            requesting_sb_user = SBUser.objects.get(user_id = self.request.user.id)
-            requested_sb_user = SBUser.objects.get(user_id = kwargs['pk'])
+            requesting_sb_user = SBUser.objects.get(
+                user_id=self.request.user.id)
+            requested_sb_user = SBUser.objects.get(user_id=kwargs['pk'])
             serializer = RetrieveProfileSerializer(requested_sb_user)
             data = json.loads(json.dumps(serializer.data))
             if requested_sb_user.display_email == 'None':
                 data['user'].pop('email')
                 data['user'].pop('username')
             if requested_sb_user.display_email == 'Friends':
-                if requesting_sb_user not in requested_sb_user.friends.all():     
+                if requesting_sb_user not in requested_sb_user.friends.all():
                     data['user'].pop('email')
                     data['user'].pop('username')
                 else:
@@ -356,7 +403,7 @@ class RetrieveProfileView(generics.RetrieveAPIView):
             if requested_sb_user.display_mobile == 'None':
                 data.pop('mobile_number')
             if requested_sb_user.display_mobile == 'Friends':
-                if requesting_sb_user not in requested_sb_user.friends.all():     
+                if requesting_sb_user not in requested_sb_user.friends.all():
                     data.pop('mobile_number')
                 else:
                     pass
@@ -376,7 +423,7 @@ class RetrieveProfileView(generics.RetrieveAPIView):
                 data.pop('your_address')
                 data.pop('tell_your_friends_about_you')
             if requested_sb_user.display_personal_info == 'Friends':
-                if requesting_sb_user not in requested_sb_user.friends.all():     
+                if requesting_sb_user not in requested_sb_user.friends.all():
                     if data.get('mobile_number') is not None:
                         data.pop('mobile_number')
                     if data['user'].get('username') is not None:
@@ -394,23 +441,27 @@ class RetrieveProfileView(generics.RetrieveAPIView):
                 else:
                     pass
         return Response(data, status=status.HTTP_200_OK)
+
+
 class FriendRequestView(generics.ListCreateAPIView):
     def create(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Please provide user id.")
         request.data['user'] = kwargs['pk']
         request.data['sender'] = self.request.user.id
-        user = SBUser.objects.get(user_id = request.data['user'])
-        sender = SBUser.objects.get(user_id = request.data['sender'])
+        user = SBUser.objects.get(user_id=request.data['user'])
+        sender = SBUser.objects.get(user_id=request.data['sender'])
         if user in sender.friends.all():
             raise NotAcceptable(detail="You are already friends.")
         if user == sender:
-            raise NotAcceptable(detail = "You can send request to yourself.")
+            raise NotAcceptable(detail="You can send request to yourself.")
         return super().create(request, *args, **kwargs)
+
     def get_queryset(self):
-        return FriendRequest.objects.filter(user_id = self.request.user.id)
+        return FriendRequest.objects.filter(user_id=self.request.user.id)
     serializer_class = FriendRequestSerializer
     permission_classes = [IsAuthenticated]
+
 
 class AcceptCancelRequestView(generics.RetrieveUpdateAPIView):
     '''
@@ -418,45 +469,48 @@ class AcceptCancelRequestView(generics.RetrieveUpdateAPIView):
     For cancel, bool = False
     '''
     permission_classes = [IsAuthenticated]
+
     def update(self, request, *args, **kwargs):
         if kwargs['pk'] is None:
             raise NotAcceptable(detail="Provide Request id.")
         if request.data.get('bool') is None:
-            raise NotAcceptable(detail="Please provie bool, True for accept and False for cancel.")
-        friend_request = FriendRequest.objects.get(id = kwargs['pk'])
-        requesting_user = SBUser.objects.get(user_id = self.request.user.id)
-        sender = SBUser.objects.get(user_id = friend_request.sender_id)
-        acceptor = SBUser.objects.get(user_id = friend_request.user_id)
+            raise NotAcceptable(
+                detail="Please provie bool, True for accept and False for cancel.")
+        friend_request = FriendRequest.objects.get(id=kwargs['pk'])
+        requesting_user = SBUser.objects.get(user_id=self.request.user.id)
+        sender = SBUser.objects.get(user_id=friend_request.sender_id)
+        acceptor = SBUser.objects.get(user_id=friend_request.user_id)
         if request.data['bool'] == False:
             if (requesting_user != sender) and (requesting_user != acceptor):
-                raise NotAcceptable(detail="You are not authorized for this action.")
+                raise NotAcceptable(
+                    detail="You are not authorized for this action.")
             else:
                 friend_request.delete()
-                return Response("Request has been cancel", status = status.HTTP_200_OK)
+                return Response("Request has been cancel", status=status.HTTP_200_OK)
         if request.data['bool'] == True:
             if requesting_user != acceptor:
-                raise NotAcceptable(detail="You are not authorized for this action.")
+                raise NotAcceptable(
+                    detail="You are not authorized for this action.")
             else:
                 friends = set(acceptor.friends.values_list('pk', flat=True))
                 friends = list(friends.union({sender.id}))
-                data = {"friends":friends}
+                data = {"friends": friends}
                 serializer = AcceptRequestSerializer(acceptor, data=data)
                 serializer.is_valid(raise_exception=True)
                 serializer.save()
                 friend_request.delete()
-                return Response(f'You and {sender} are friends now.', status= status.HTTP_200_OK)
+                return Response(f'You and {sender} are friends now.', status=status.HTTP_200_OK)
+
     def retrieve(self, request, *args, **kwargs):
         if kwargs['pk'] is None:
             raise NotAcceptable(detail="Provide request id.")
-        friend_request = FriendRequest.objects.get(id = kwargs['pk'])
-        requesting_user = SBUser.objects.get(user_id = self.request.user.id)
-        sender = SBUser.objects.get(user_id = friend_request.sender_id)
-        acceptor = SBUser.objects.get(user_id = friend_request.user_id)
+        friend_request = FriendRequest.objects.get(id=kwargs['pk'])
+        requesting_user = SBUser.objects.get(user_id=self.request.user.id)
+        sender = SBUser.objects.get(user_id=friend_request.sender_id)
+        acceptor = SBUser.objects.get(user_id=friend_request.user_id)
         if (requesting_user != sender) and (requesting_user != acceptor):
-            raise NotAcceptable(detail="You are not authorized for this action.")
+            raise NotAcceptable(
+                detail="You are not authorized for this action.")
         else:
             serializer = FriendRequestSerializer(friend_request)
-            return Response(serializer.data, status = status.HTTP_200_OK)
-
-                
-                
+            return Response(serializer.data, status=status.HTTP_200_OK)

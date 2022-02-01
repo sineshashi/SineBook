@@ -44,16 +44,21 @@ class UpdateProfileSerialier(serializers.ModelSerializer):
             user = validated_data.pop('user')
             User.objects.filter(id=instance.user_id).update(**user)
             return super().update(instance, validated_data)
+
+
 class EmailLessUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['first_name', 'last_name']
 
+
 class ListFriendsSerializer(serializers.ModelSerializer):
     user = EmailLessUserSerializer()
+
     class Meta:
         model = SBUser
         fields = ['id', 'user_id', 'user', 'image', 'created_at', 'updated_at']
+
 
 class RetrieveProfileSerializer(serializers.ModelSerializer):
     user = UpdateUserSerializer()
@@ -62,7 +67,6 @@ class RetrieveProfileSerializer(serializers.ModelSerializer):
         model = SBUser
         fields = ['id', 'user_id', 'user', 'mobile_number', 'date_of_birth', 'image', 'your_first_school', 'your_college',
                   'your_occupation', 'your_address', 'tell_your_friends_about_you', 'favourite_movies', 'favourite_books', 'created_at', 'updated_at']
-        
 
 
 class PostSerializer(serializers.ModelSerializer):
@@ -137,12 +141,15 @@ class CommentUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = ['comment', 'updated_at']
+
+
 class FriendRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = FriendRequest
         fields = ['sender', 'user', 'requested_at']
 
+
 class AcceptRequestSerializer(serializers.ModelSerializer):
     class Meta:
-        model= SBUser
+        model = SBUser
         fields = ['friends']
