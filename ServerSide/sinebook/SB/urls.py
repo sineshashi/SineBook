@@ -6,14 +6,11 @@ from rest_framework_simplejwt.views import (
 from .views import (RegisterUserView, UpdateProfileView, Postview, PostLikeView, CommentView,
                     CommentLikeView, PostRUDView, CommentListView, CommentRDView, PostListsofProfileView, ListFriends, RetrieveProfileView,
                     FriendRequestView, AcceptCancelRequestView, UnfriendView)
-from rest_framework_swagger.views import get_swagger_view
 
-schema_view = get_swagger_view(title='Pastebin API')
 
 urlpatterns = [
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('', schema_view),
     path('register', RegisterUserView.as_view(), name="register_user"),
     path('myprofile/<int:pk>', UpdateProfileView.as_view(), name="profile"),
     path('post', Postview.as_view(), name="post"),

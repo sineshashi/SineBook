@@ -40,8 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'SB',
     'rest_framework',
-    'phonenumber_field',
-    'rest_framework_swagger'
+    'phonenumber_field'
 ]
 
 MIDDLEWARE = [
@@ -67,11 +66,8 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-            ],
-            'libraries': {
-                'staticfiles': 'django.templatetags.static',
-            },
-        },
+            ]
+        }
     },
 ]
 
@@ -133,8 +129,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication'
     ),
-    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
     'PAGE_SIZE': 10
 }
