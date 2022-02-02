@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import FriendRequest, SBUser, Post, Comment
+from .models import FriendRequest, LikedOrCommentedPosts, SBUser, Post, Comment
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -26,6 +26,7 @@ class RegisterSBUserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = validated_data.pop('user')
         user_instance = User.objects.create(**user)
+        LikedOrCommentedPosts.objects.create(user = user_instance)
         return SBUser.objects.create(user=user_instance, **validated_data)
 
 

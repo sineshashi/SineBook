@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import SBUser, Post, Comment, FriendRequest
+from .models import Like, LikedOrCommentedPosts, SBUser, Post, Comment, FriendRequest
 
 
 @admin.register(SBUser)
@@ -10,34 +10,25 @@ class SBUserAdmin(admin.ModelAdmin):
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user', 'description', 'image', 'total_number_of_likes',
-                    'total_number_of_comments', 'who_can_see', 'who_can_comment', 'posted_at', 'updated_at']
+    list_display = ['id', 'user', 'description', 'image', 'number_of_likes',
+                    'number_of_comments', 'who_can_see', 'who_can_comment', 'posted_at', 'updated_at']
 
-    def total_number_of_likes(self, instance):
-        likes_count = instance.likes.all().count()
-        instance.number_of_likes=likes_count
-        instance.save()
-        return likes_count
-
-    def total_number_of_comments(self, instance):
-        comment_count = Comment.objects.filter(post_id=instance.id).count()
-        instance.number_of_comments=comment_count
-        instance.save()
-        return comment_count
 
 
 @admin.register(Comment)
 class CommentAdmin(admin.ModelAdmin):
     list_display = ['id', 'user', 'post', 'comment_on_which_user_can_comment',
-                    'comment', 'total_number_of_likes', 'commented_at', 'updated_at']
-
-    def total_number_of_likes(self, instance):
-        likes_count = instance.likes.all().count()
-        instance.number_of_likes = likes_count
-        instance.save()
-        return likes_count
+                    'comment', 'number_of_likes', 'commented_at', 'updated_at']
 
 
 @admin.register(FriendRequest)
 class FriendRequestAdmin(admin.ModelAdmin):
     list_display = ['id', 'sender', 'user', 'requested_at']
+
+@admin.register(Like)
+class LikeAdmin(admin.ModelAdmin):
+    list_display = ['id', 'liker', 'post', 'liked_at']
+
+@admin.register(LikedOrCommentedPosts)
+class LikedOrCommentedPostsAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'likes', 'comments']

@@ -10,7 +10,7 @@ from rest_framework.exceptions import NotAcceptable, NotAuthenticated
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 import json
-
+from django.core.exceptions import ObjectDoesNotExist
 
 class RegisterUserView(generics.CreateAPIView):
     '''
@@ -107,8 +107,8 @@ class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
         id = kwargs['pk']
         try:
             requesting_user = SBUser.objects.get(user_id=self.request.user.id)
-        except:
-            SBUser.DoesNotExist()
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         if id != requesting_user.id:
             raise NotAuthenticated(
                 detail="You are not authorized for this action.")
@@ -120,8 +120,8 @@ class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
         id = kwargs['pk']
         try:
             requesting_user = SBUser.objects.get(user_id=self.request.user.id)
-        except:
-            SBUser.DoesNotExist()
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         if id != requesting_user.id:
             raise NotAuthenticated(
                 detail="You are not authorized for this action.")
@@ -161,7 +161,9 @@ class PostLikeView(generics.UpdateAPIView):
         It likes the post of given pk if it is not liked earlier, else it will unlike it.
         '''
         kwargs['partial'] = True
-        post = Post.objects.get(id=kwargs['pk'])
+        post = Post.objects.filter(id=kwargs['pk']).first()
+        if post is None:
+            raise NotAcceptable(detail="Provide right post id.")
         if post.likes.filter(id=self.request.user.id).exists():
             post.likes.remove(self.request.user.id)
             return Response("Post has been unliked", status=status.HTTP_200_OK)
@@ -184,7 +186,10 @@ class CommentView(generics.CreateAPIView):
         if request.data.get('comment') is None:
             raise NotAcceptable(detail="Comment is blank.")
         post_id = request.data.get('post')
-        post = Post.objects.get(id=post_id)
+        try:
+            post = Post.objects.get(id=post_id)
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         if post.who_can_comment == 'None':
             raise NotAcceptable(
                 detail="User has blocked his comments on this post.")
@@ -207,7 +212,10 @@ class CommentLikeView(generics.UpdateAPIView):
 
     def update(self, request, *args, **kwargs):
         kwargs['partial'] = True
-        comment = Comment.objects.get(id=kwargs['pk'])
+        try:
+            comment = Comment.objects.get(id=kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         if comment.likes.filter(id=self.request.user.id).exists():
             comment.likes.remove(self.request.user.id)
             return Response("comment has been unliked", status=status.HTTP_200_OK)
@@ -222,7 +230,10 @@ class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
         Retrieves any post and manages who_can_see and who_can_comment fields also.
         '''
         post_id = kwargs['pk']
-        post = Post.objects.get(id=post_id)
+        try:
+            post = Post.objects.get(id=post_id)
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         post_user = post.user_id
         requesting_user = self.request.user
         sbuser = SBUser.objects.get(user_id=post_user)
@@ -239,7 +250,10 @@ class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
     def update(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Please Provide details.")
-        post = Post.objects.get(id=kwargs['pk'])
+        try:
+            post = Post.objects.get(id=kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         if self.request.user.id != post.user_id:
             raise NotAcceptable(
                 detail="You are not authorized for this action.")
@@ -249,7 +263,10 @@ class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
     def destroy(self, request, *args, **kwargs):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Please Provide details.")
-        post = Post.objects.get(id=kwargs['pk'])
+        try:
+            post = Post.objects.get(id=kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         if self.request.user.id != post.user_id:
             raise NotAcceptable(
                 detail="You are not authorized for this action.")
@@ -311,7 +328,10 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
         retrieves comment with the management of who_can_see section of post.
         '''
         comment_id = kwargs['pk']
-        comment = Comment.objects.get(id=comment_id)
+        try:
+            comment = Comment.objects.get(id=comment_id)
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         post = comment.post
         post_user = post.user_id
         requesting_user = self.request.user
@@ -331,7 +351,10 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
             raise NotAcceptable(detail="Provide primary key.")
         kwargs['partial'] = True
         comment_id = kwargs['pk']
-        comment = Comment.objects.get(id=comment_id)
+        try:
+            comment = Comment.objects.get(id=comment_id)
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         posting_user = comment.post.user_id
         if (self.request.user.id != comment.user_id) or (self.request.user.id != posting_user):
             raise NotAcceptable(
@@ -342,7 +365,10 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         comment_id = kwargs['pk']
-        comment = Comment.objects.get(id=comment_id)
+        try:
+            comment = Comment.objects.get(id=comment_id)
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key.")
         posting_user = comment.post.user_id
         if (self.request.user.id != comment.user_id) or (self.request.user.id != posting_user):
             raise NotAcceptable(
@@ -435,17 +461,27 @@ class RetrieveProfileView(generics.RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         '''
         retrieves profile with the management of display_email, display_mobile and display_personal_info.
+        It takes primary key of user. i.e. userid not sbuser id.
         '''
         if kwargs['pk'] is None:
             raise NotAcceptable(detail="Please provide user id.")
         if self.request.user.id == kwargs['pk']:
-            requested_data = SBUser.objects.get(user_id=self.request.user)
+            try:
+                requested_data = SBUser.objects.get(user_id=self.request.user.id)
+            except ObjectDoesNotExist:
+                raise NotAcceptable(detail="This user is not registered completely.")
             serializer = RetrieveProfileSerializer(requested_data)
             return Response(serializer.data, status=status.HTTP_200_OK)
         else:
-            requesting_sb_user = SBUser.objects.get(
-                user_id=self.request.user.id)
-            requested_sb_user = SBUser.objects.get(user_id=kwargs['pk'])
+            try:
+                requesting_sb_user = SBUser.objects.get(
+                    user_id=self.request.user.id)
+            except ObjectDoesNotExist:
+                raise NotAcceptable(detail="This user is not registered completely.")
+            try:
+                requested_sb_user = SBUser.objects.get(user_id=kwargs['pk'])
+            except ObjectDoesNotExist:
+                raise NotAcceptable(detail="Provide right primary key")
             serializer = RetrieveProfileSerializer(requested_sb_user)
             data = json.loads(json.dumps(serializer.data))
             if requested_sb_user.display_email == 'None':
@@ -564,7 +600,10 @@ class AcceptCancelRequestView(generics.RetrieveUpdateAPIView):
     def retrieve(self, request, *args, **kwargs):
         if kwargs['pk'] is None:
             raise NotAcceptable(detail="Provide request id.")
-        friend_request = FriendRequest.objects.get(id=kwargs['pk'])
+        try:
+            friend_request = FriendRequest.objects.get(id=kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key")
         requesting_user = SBUser.objects.get(user_id=self.request.user.id)
         sender = SBUser.objects.get(user_id=friend_request.sender_id)
         acceptor = SBUser.objects.get(user_id=friend_request.user_id)
@@ -587,7 +626,10 @@ class UnfriendView(generics.UpdateAPIView):
             raise NotAcceptable(
                 detail="Please provide sine book user id of the friend.")
         requesting_user_id = self.request.user.id
-        unfriending_sb_user = SBUser.objects.get(id=kwargs['pk'])
+        try:
+            unfriending_sb_user = SBUser.objects.get(id=kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right primary key")
         if unfriending_sb_user.friends.filter(user_id=requesting_user_id).exists() == False:
             raise NotAcceptable(detail="You are already not friends.")
         requesting_sb_user = SBUser.objects.get(user_id=requesting_user_id)

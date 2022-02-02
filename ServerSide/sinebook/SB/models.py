@@ -1,3 +1,4 @@
+from colorsys import ONE_THIRD
 from turtle import ondrag
 from django.core.validators import MinValueValidator
 from django.db import models
@@ -36,9 +37,9 @@ class SBUser(models.Model):
         choices=Display_Choices, max_length=255, default='Public')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
     def __str__(self):
         return self.user.username
+
 
 
 class Post(models.Model):
@@ -46,7 +47,7 @@ class Post(models.Model):
     description = models.TextField(max_length=200, blank=True, null=True)
     image = models.ImageField(null=True, blank=True)
     likes = models.ManyToManyField(
-        User, blank=True, related_name="liking_users")
+        User, blank=True, related_name="liking_users", through='Like')
     number_of_likes = models.IntegerField(
         validators=[MinValueValidator(0)], default=0)
     number_of_comments = models.IntegerField(
@@ -57,6 +58,15 @@ class Post(models.Model):
         choices=Display_Choices, max_length=255, default='Public')
     posted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def number_of_likes(self):
+        self.number_of_likes = self.likes.all().count()
+        return self.number_of_likes
+
+    def number_of_comments(self):
+        self.number_of_comments = Comment.objects.filter(
+            post_id=self.id).count()
+        return self.number_of_comments
 
 
 class Comment(models.Model):
@@ -72,6 +82,12 @@ class Comment(models.Model):
     commented_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def number_of_likes(self):
+        self.number_of_likes = self.likes.all().count()
+        return self.number_of_likes
+    class Meta:
+        ordering = ['-commented_at']
+
 
 class FriendRequest(models.Model):
     sender = models.ForeignKey(
@@ -79,3 +95,22 @@ class FriendRequest(models.Model):
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name="sine_book_user")
     requested_at = models.DateTimeField(auto_now_add=True)
+
+
+class Like(models.Model):
+    liker = models.ForeignKey(User, on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE)
+    liked_at = models.DateTimeField(auto_now=True)
+    class Meta:
+        ordering = ['-liked_at']
+
+class LikedOrCommentedPosts(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='liker_or_commentor')
+    likes = models.ManyToManyField(Like, blank=True, related_name="liked_posts")
+    comments = models.ManyToManyField(Comment, blank=True, related_name="commented_posts")
+    def likes(self):
+        self.likes = Like.objects.filter(liker = self.user)
+        return self.likes
+    def comments(self):
+        self.comments = Comment.objects.filter(user=self.user)
+        return self.comments
