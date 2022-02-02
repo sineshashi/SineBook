@@ -5,7 +5,7 @@ from rest_framework_simplejwt.views import (
 )
 from .views import (RegisterUserView, UpdateProfileView, Postview, PostLikeView, CommentView,
                     CommentLikeView, PostRUDView, CommentListView, CommentRDView, PostListsofProfileView, ListFriends, RetrieveProfileView,
-                    FriendRequestView, AcceptCancelRequestView)
+                    FriendRequestView, AcceptCancelRequestView, UnfriendView)
 from rest_framework_swagger.views import get_swagger_view
 
 schema_view = get_swagger_view(title='Pastebin API')
@@ -29,5 +29,6 @@ urlpatterns = [
     path('profile/<int:pk>', RetrieveProfileView.as_view(), name="retrieve_profile"),
     path('friendrequest/<int:pk>', FriendRequestView.as_view(), name="send_request"),
     path('acceptrequest/<int:pk>',
-         AcceptCancelRequestView.as_view(), name="accept_requests")
+         AcceptCancelRequestView.as_view(), name="accept_requests"),
+    path('unfriend/<int:pk>', UnfriendView.as_view(), name="unfriend")
 ]

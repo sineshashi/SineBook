@@ -1,16 +1,14 @@
 from django.contrib.auth.hashers import make_password
-from django.shortcuts import render
 from .models import FriendRequest, SBUser, Post, Comment
 from django.contrib.auth.models import User
 from rest_framework import generics, status
-from .serializers import (AcceptRequestSerializer, FriendRequestSerializer, RegisterSBUserSerializer, UpdateProfileSerialier, PostSerializer,
-                          PostLikeSerializer, CommentSerializer, CommentLikeSerializer, PostRetrieveSerializer, PostRDSerializer, PostUSerializer,
+from .serializers import (FriendRequestSerializer, RegisterSBUserSerializer, UpdateProfileSerialier, PostSerializer,
+                          CommentSerializer, PostRetrieveSerializer, PostRDSerializer, PostUSerializer,
                           CommentLRDSerializerForPoster, CommentLRSerializerForUser, CommentRDSerializerForCommentor, CommentUpdateSerializer,
                           RetrieveProfileSerializer, ListFriendsSerializer)
 from rest_framework.exceptions import NotAcceptable, NotAuthenticated
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.renderers import JSONRenderer
 import json
 
 
@@ -89,7 +87,10 @@ class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         id = kwargs['pk']
-        requesting_user = SBUser.objects.get(user_id=self.request.user.id)
+        requesting_user = SBUser.objects.filter(
+            user_id=self.request.user.id).first()
+        if requesting_user is None:
+            raise NotAcceptable(detail="Please provide right SBUser id.")
         if id != requesting_user.id:
             raise NotAuthenticated(
                 detail="You are not authorized for this action.")
@@ -104,7 +105,10 @@ class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         id = kwargs['pk']
-        requesting_user = SBUser.objects.get(user_id=self.request.user.id)
+        try:
+            requesting_user = SBUser.objects.get(user_id=self.request.user.id)
+        except:
+            SBUser.DoesNotExist()
         if id != requesting_user.id:
             raise NotAuthenticated(
                 detail="You are not authorized for this action.")
@@ -114,7 +118,10 @@ class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Provide primary key.")
         id = kwargs['pk']
-        requesting_user = SBUser.objects.get(user_id=self.request.user.id)
+        try:
+            requesting_user = SBUser.objects.get(user_id=self.request.user.id)
+        except:
+            SBUser.DoesNotExist()
         if id != requesting_user.id:
             raise NotAuthenticated(
                 detail="You are not authorized for this action.")
@@ -147,22 +154,20 @@ class Postview(generics.CreateAPIView):
 
 
 class PostLikeView(generics.UpdateAPIView):
+    permission_classes = [IsAuthenticated]
+
     def update(self, request, *args, **kwargs):
         '''
         It likes the post of given pk if it is not liked earlier, else it will unlike it.
         '''
         kwargs['partial'] = True
         post = Post.objects.get(id=kwargs['pk'])
-        likes = set(post.likes.all().values_list('pk', flat=True))
-        if self.request.user.id in likes:
-            request.data['likes'] = list(
-                likes.difference({self.request.user.id}))
+        if post.likes.filter(id=self.request.user.id).exists():
+            post.likes.remove(self.request.user.id)
+            return Response("Post has been unliked", status=status.HTTP_200_OK)
         else:
-            request.data['likes'] = list(likes.union({self.request.user.id}))
-        return super().update(request, *args, **kwargs)
-    queryset = Post.objects.all()
-    serializer_class = PostLikeSerializer
-    permission_classes = [IsAuthenticated]
+            post.likes.add(self.request.user.id)
+            return Response("Post has been liked.", status=status.HTTP_200_OK)
 
 
 class CommentView(generics.CreateAPIView):
@@ -185,7 +190,7 @@ class CommentView(generics.CreateAPIView):
                 detail="User has blocked his comments on this post.")
         if post.who_can_comment == 'Friends':
             sbuser = SBUser.objects.get(user_id=post.user_id)
-            if (self.request.user not in sbuser.friends.all()) and (self.request.user != sbuser.user):
+            if (sbuser.friends.filter(user_id=self.request.user.id).exists() == False) and (self.request.user != sbuser.user):
                 raise NotAcceptable(
                     detail="You are not friend of the user and only his/her friends can comment on this post.")
         return super().create(request, *args, **kwargs)
@@ -198,20 +203,17 @@ class CommentLikeView(generics.UpdateAPIView):
     '''
     This API works same as post like api. It likes any comment.
     '''
+    permission_classes = [IsAuthenticated]
 
     def update(self, request, *args, **kwargs):
         kwargs['partial'] = True
         comment = Comment.objects.get(id=kwargs['pk'])
-        likes = set(comment.likes.all().values_list('pk', flat=True))
-        if self.request.user.id in likes:
-            request.data['likes'] = list(
-                likes.difference({self.request.user.id}))
+        if comment.likes.filter(id=self.request.user.id).exists():
+            comment.likes.remove(self.request.user.id)
+            return Response("comment has been unliked", status=status.HTTP_200_OK)
         else:
-            request.data['likes'] = list(likes.union({self.request.user.id}))
-        return super().update(request, *args, **kwargs)
-    queryset = Comment.objects.all()
-    serializer_class = CommentLikeSerializer
-    permission_classes = [IsAuthenticated]
+            comment.likes.add(self.request.user.id)
+            return Response("comment has been liked.", status=status.HTTP_200_OK)
 
 
 class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
@@ -229,7 +231,7 @@ class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
                 raise NotAcceptable(
                     detail="You are not authorized for this action.")
             if post.who_can_see == 'Friends':
-                if requesting_user not in sbuser.friends.all():
+                if sbuser.friends.filter(user_id=requesting_user.id).exists() == False:
                     raise NotAcceptable(
                         detail="You are not a friend of the user and he/she has kept this post for friends only.")
         return super().retrieve(request, *args, **kwargs)
@@ -284,7 +286,7 @@ class CommentListView(generics.ListAPIView):
                 raise NotAcceptable(
                     detail="You are not authorized for this action.")
             if post.who_can_see == 'Friends':
-                if requesting_user not in sbuser.friends.all():
+                if sbuser.friends.filter(user_id=requesting_user.id).exists() == False:
                     raise NotAcceptable(
                         detail="You are not a friend of the user and he/she has kept this post for friends only.")
         return super().list(request, *args, **kwargs)
@@ -319,7 +321,7 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
                 raise NotAcceptable(
                     detail="You are not authorized for this action.")
             if post.who_can_see == 'Friends':
-                if requesting_user not in sbuser.friends.all():
+                if sbuser.friends.filter(user_id=requesting_user.id).exists() == False:
                     raise NotAcceptable(
                         detail="You are not a friend of the user and he/she has kept this post for friends only.")
         return super().retrieve(request, *args, **kwargs)
@@ -415,7 +417,7 @@ class ListFriends(generics.ListAPIView):
             if requested_user.display_friends == 'Friends':
                 requesting_sb_user = SBUser.objects.get(
                     user_id=self.request.user.id)
-                if requesting_sb_user not in requested_user.friends.all():
+                if requested_user.friends.filter(id=requesting_sb_user.id).exists() == False:
                     raise NotAcceptable(
                         detail="You are trying to access a private list.")
                 else:
@@ -537,7 +539,9 @@ class AcceptCancelRequestView(generics.RetrieveUpdateAPIView):
         if request.data.get('bool') is None:
             raise NotAcceptable(
                 detail="Please provie bool, True for accept and False for cancel.")
-        friend_request = FriendRequest.objects.get(id=kwargs['pk'])
+        friend_request = FriendRequest.objects.filter(id=kwargs['pk']).first()
+        if friend_request is None:
+            raise NotAcceptable(detail="Please provide right request id.")
         requesting_user = SBUser.objects.get(user_id=self.request.user.id)
         sender = SBUser.objects.get(user_id=friend_request.sender_id)
         acceptor = SBUser.objects.get(user_id=friend_request.user_id)
@@ -547,18 +551,13 @@ class AcceptCancelRequestView(generics.RetrieveUpdateAPIView):
                     detail="You are not authorized for this action.")
             else:
                 friend_request.delete()
-                return Response("Request has been cancel", status=status.HTTP_200_OK)
+                return Response("Request has been cancelled.", status=status.HTTP_200_OK)
         if request.data['bool'] == True:
             if requesting_user != acceptor:
                 raise NotAcceptable(
                     detail="You are not authorized for this action.")
             else:
-                friends = set(acceptor.friends.values_list('pk', flat=True))
-                friends = list(friends.union({sender.id}))
-                data = {"friends": friends}
-                serializer = AcceptRequestSerializer(acceptor, data=data)
-                serializer.is_valid(raise_exception=True)
-                serializer.save()
+                acceptor.friends.add(sender)
                 friend_request.delete()
                 return Response(f'You and {sender} are friends now.', status=status.HTTP_200_OK)
 
@@ -575,3 +574,22 @@ class AcceptCancelRequestView(generics.RetrieveUpdateAPIView):
         else:
             serializer = FriendRequestSerializer(friend_request)
             return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class UnfriendView(generics.UpdateAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def update(self, request, *args, **kwargs):
+        '''
+        This unfriends a friend whose pk (sbuserid) is passed by kwargs.
+        '''
+        if kwargs.get('pk') is None:
+            raise NotAcceptable(
+                detail="Please provide sine book user id of the friend.")
+        requesting_user_id = self.request.user.id
+        unfriending_sb_user = SBUser.objects.get(id=kwargs['pk'])
+        if unfriending_sb_user.friends.filter(user_id=requesting_user_id).exists() == False:
+            raise NotAcceptable(detail="You are already not friends.")
+        requesting_sb_user = SBUser.objects.get(user_id=requesting_user_id)
+        requesting_sb_user.friends.remove(unfriending_sb_user)
+        return Response(f"You have unfriended {unfriending_sb_user}.", status=status.HTTP_200_OK)

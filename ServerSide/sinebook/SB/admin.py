@@ -15,13 +15,14 @@ class PostAdmin(admin.ModelAdmin):
 
     def total_number_of_likes(self, instance):
         likes_count = instance.likes.all().count()
-        Post.objects.filter(id=instance.id).update(number_of_likes=likes_count)
+        instance.number_of_likes=likes_count
+        instance.save()
         return likes_count
 
     def total_number_of_comments(self, instance):
         comment_count = Comment.objects.filter(post_id=instance.id).count()
-        Post.objects.filter(id=instance.id).update(
-            number_of_comments=comment_count)
+        instance.number_of_comments=comment_count
+        instance.save()
         return comment_count
 
 
@@ -32,8 +33,8 @@ class CommentAdmin(admin.ModelAdmin):
 
     def total_number_of_likes(self, instance):
         likes_count = instance.likes.all().count()
-        Comment.objects.filter(id=instance.id).update(
-            number_of_likes=likes_count)
+        instance.number_of_likes = likes_count
+        instance.save()
         return likes_count
 
 
