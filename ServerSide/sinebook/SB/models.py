@@ -68,7 +68,11 @@ class Post(models.Model):
             post_id=self.id).count()
         return self.number_of_comments
 
-
+class HashTag(models.Model):
+    tag_name = models.CharField(max_length=500)
+    posts = models.ManyToManyField(Post, blank=True, related_name = "tagged_posts")
+    def __str__(self):
+        return self.tag_name
 class Comment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, on_delete=models.CASCADE)

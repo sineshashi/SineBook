@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import FriendRequest, LikedOrCommentedPosts, SBUser, Post, Comment
+from .models import FriendRequest, HashTag, LikedOrCommentedPosts, SBUser, Post, Comment
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -74,6 +74,21 @@ class PostSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
         fields = ['user', 'description', 'image', 'posted_at', 'updated_at']
+    def create(self, validated_data):
+        post = Post.objects.create(**validated_data)
+        description = validated_data.get('description')
+        if description is not None:
+            description_word_list = description.split(' ')
+            for word in description_word_list:
+                if word.startswith('#'):
+                    word = word.replace('#', '')
+                    try:
+                        hash_tag = HashTag.objects.get(tag_name = word)
+                        hash_tag.posts.add(post)
+                    except:
+                        hash_tag = HashTag.objects.create(tag_name = word)
+                        hash_tag.posts.add(post)
+        return post
 
 
 
@@ -106,6 +121,20 @@ class PostUSerializer(serializers.ModelSerializer):
         model = Post
         fields = ['description', 'image', 'who_can_comment',
                   'who_can_see', 'posted_at', 'updated_at']
+    def update(self, instance, validated_data):
+        description = validated_data.get('description')
+        if description is not None:
+            description_word_list = description.split(' ')
+            for word in description_word_list:
+                if word.startswith('#'):
+                    word = word.replace('#', '')
+                    try:
+                        hash_tag = HashTag.objects.get(tag_name = word)
+                        hash_tag.posts.add(instance)
+                    except:
+                        hash_tag = HashTag.objects.create(tag_name = word)
+                        hash_tag.posts.add(instance)
+        return super().update(instance, validated_data)
 
 
 class CommentLRDSerializerForPoster(serializers.ModelSerializer):

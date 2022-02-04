@@ -1,3 +1,4 @@
+from tkinter import N
 from django.contrib.auth.hashers import make_password
 from .models import FriendRequest, SBUser, Post, Comment
 from django.contrib.auth.models import User
@@ -147,6 +148,10 @@ class Postview(generics.CreateAPIView):
         request.data['user'] = self.request.user.id
         if (request.data.get('description') is None) and (request.data.get('image') is None):
             raise NotAcceptable(detail="Please provide data to post.")
+        if request.data.get('description') is None:
+            description = str(request.data.get('description'))
+            if description.count('#') > 10:
+                raise NotAcceptable(detail="You can not use more than 10 hash tags.")
         return super().create(request, *args, **kwargs)
     queryset = Post.objects.all()
     serializer_class = PostSerializer
@@ -258,6 +263,10 @@ class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
             raise NotAcceptable(
                 detail="You are not authorized for this action.")
         kwargs['partial'] = True
+        if request.data.get('description') is None:
+            description = str(request.data.get('description'))
+            if description.count('#') > 10:
+                raise NotAcceptable(detail="You can not use more than 10 hash tags.")
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):

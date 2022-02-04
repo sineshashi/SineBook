@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Like, LikedOrCommentedPosts, SBUser, Post, Comment, FriendRequest
+from .models import Like, LikedOrCommentedPosts, SBUser, Post, Comment, FriendRequest, HashTag
 
 
 @admin.register(SBUser)
@@ -32,3 +32,7 @@ class LikeAdmin(admin.ModelAdmin):
 @admin.register(LikedOrCommentedPosts)
 class LikedOrCommentedPostsAdmin(admin.ModelAdmin):
     list_display = ['id', 'user', 'likes', 'comments']
+
+@admin.register(HashTag)
+class HashTagAdmin(admin.ModelAdmin):
+    list_display = ['id', 'tag_name']
