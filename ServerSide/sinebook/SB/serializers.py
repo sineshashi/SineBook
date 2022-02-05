@@ -92,8 +92,17 @@ class PostLikeSerializer(serializers.ModelSerializer):
 class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
-        fields = ['user', 'post', 'comment_on_which_user_can_comment',
+        fields = ['id', 'user', 'post', 'comment_on_which_user_can_comment',
                   'comment', 'commented_at', 'updated_at']
+    def create(self, validated_data):
+        comment = super().create(validated_data)
+        post = comment.post
+        post.number_of_comments += 1
+        if comment.user_id != post.user_id:
+            post.effective_number_of_comments +=1
+        post.save()
+        return comment
+
 
 
 class CommentLRDSerializerForPoster(serializers.ModelSerializer):
@@ -202,7 +211,7 @@ class RetrievePageByUserSerializer(serializers.ModelSerializer):
 class PostByUserCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['user', 'description', 'image', 'tags', 'posted_at', 'updated_at']
+        fields = ['user', 'description', 'image', 'shared_post', 'tags', 'posted_at', 'updated_at']
     def create(self, validated_data):
         post = super().create(validated_data)
         try:
@@ -212,13 +221,17 @@ class PostByUserCreateSerializer(serializers.ModelSerializer):
                 hash_tag.posts.add(post)
         except:
             pass
+        shared_post = post.shared_post
+        if shared_post is not None:
+            shared_post.number_of_shares += 1
+            shared_post.save()
         return post
 
 
 class PostByPageCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['user', 'page', 'description',
+        fields = ['user', 'page', 'description', 'shared_post',
                   'image', 'tags', 'posted_at', 'updated_at']
     def create(self, validated_data):
         post = super().create(validated_data)
@@ -229,48 +242,52 @@ class PostByPageCreateSerializer(serializers.ModelSerializer):
                 hash_tag.posts.add(post)
         except:
             pass
+        shared_post = post.shared_post
+        if shared_post is not None:
+            shared_post.number_of_shares += 1
+            shared_post.save()
         return post
 
 class PostByUserListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['id', 'user', 'description',
+        fields = ['id', 'user', 'description', 'shared_post',
                   'image', 'posted_at', 'updated_at']
 
 
 class PostByPageListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['id', 'user', 'page', 'description',
+        fields = ['id', 'user', 'page', 'description', 'shared_post',
                   'image', 'posted_at', 'updated_at']
 
 
 class PostByUserRetrieveByOtherSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['user', 'description', 'image', 'number_of_likes',
-                  'number_of_comments', 'posted_at', 'updated_at']
+        fields = ['user', 'description', 'image', 'shared_post', 'number_of_likes',
+                  'number_of_comments', 'number_of_shares', 'posted_at', 'updated_at']
 
 
 class PostByPageRetrieveByOtherSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['user', 'page', 'description', 'image', 'number_of_likes',
-                  'number_of_comments', 'posted_at', 'updated_at']
+        fields = ['user', 'page', 'description', 'image', 'shared_post', 'number_of_likes',
+                  'number_of_comments', 'number_of_shares', 'posted_at', 'updated_at']
 
 
 class PostByUserRetrieveByPosterSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['user', 'description', 'image', 'number_of_likes',
-                  'number_of_comments', 'likes', 'who_can_comment', 'who_can_see', 'posted_at', 'updated_at']
+        fields = ['user', 'description', 'image', 'shared_post', 'number_of_likes',
+                  'number_of_comments', 'number_of_shares', 'likes', 'who_can_comment', 'who_can_see', 'posted_at', 'updated_at']
 
 
 class PostByPageRetrieveByMemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['user', 'page', 'description', 'image', 'number_of_likes',
-                  'number_of_comments', 'likes', 'posted_at', 'updated_at']
+        fields = ['user', 'page', 'description', 'image', 'shared_post', 'number_of_likes',
+                  'number_of_comments', 'number_of_shares', 'likes', 'posted_at', 'updated_at']
 
 
 class PostByUserUpdateDestroySerializer(serializers.ModelSerializer):
@@ -289,6 +306,7 @@ class PostByUserUpdateDestroySerializer(serializers.ModelSerializer):
             except:
                 pass
         return super().update(instance, validated_data)
+        
 
 
 class PostByPageUpdateDestroySerializer(serializers.ModelSerializer):
@@ -307,3 +325,4 @@ class PostByPageUpdateDestroySerializer(serializers.ModelSerializer):
             except:
                 pass
         return super().update(instance, validated_data)
+

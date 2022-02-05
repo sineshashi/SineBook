@@ -159,12 +159,16 @@ class PostLikeView(generics.UpdateAPIView):
             raise NotAcceptable(detail="Provide right post id.")
         if post.likes.filter(id=self.request.user.id).exists():
             post.likes.remove(self.request.user.id)
+            post.number_of_likes -= 1
+            post.save()
             return Response("Post has been unliked", status=status.HTTP_200_OK)
         else:
             data = {"liker": self.request.user.id, "post": post.id}
             serializer = PostLikeSerializer(data = data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
+            post.number_of_likes += 1
+            post.save()
             return Response("Post has been liked.", status=status.HTTP_200_OK)
 
 
@@ -213,9 +217,13 @@ class CommentLikeView(generics.UpdateAPIView):
             raise NotAcceptable(detail="Provide right primary key.")
         if comment.likes.filter(id=self.request.user.id).exists():
             comment.likes.remove(self.request.user.id)
+            comment.number_of_likes -= 1
+            comment.save()
             return Response("comment has been unliked", status=status.HTTP_200_OK)
         else:
             comment.likes.add(self.request.user.id)
+            comment.number_of_likes +=1
+            comment.save()
             return Response("comment has been liked.", status=status.HTTP_200_OK)
 
 
@@ -288,8 +296,7 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
             comment = Comment.objects.get(id=comment_id)
         except ObjectDoesNotExist:
             raise NotAcceptable(detail="Provide right primary key.")
-        posting_user = comment.post.user_id
-        if (self.request.user.id != comment.user_id) or (self.request.user.id != posting_user):
+        if self.request.user.id != comment.user_id:
             raise NotAcceptable(
                 detail="You are not authorized for this action.")
         return super().update(request, *args, **kwargs)
@@ -303,9 +310,14 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
         except ObjectDoesNotExist:
             raise NotAcceptable(detail="Provide right primary key.")
         posting_user = comment.post.user_id
-        if (self.request.user.id != comment.user_id) or (self.request.user.id != posting_user):
+        if (self.request.user.id != comment.user_id) and (self.request.user.id != posting_user):
             raise NotAcceptable(
                 detail="You are not authorized for this action.")
+        post = comment.post
+        post.number_of_comments -= 1
+        if comment.user_id != post.user_id:
+            post.effective_number_of_comments -= 1
+        post.save()
         return super().destroy(request, *args, **kwargs)
     queryset = Comment.objects.all()
 
@@ -718,6 +730,8 @@ class FollowUnfollowPage(generics.UpdateAPIView):
                 user_id=follower.id)
             instance = user_interests[0]
             instance.followed_pages.add(page)
+            page.number_of_followers += 1
+            page.save()
             return Response(f'{page} followed.', status=status.HTTP_200_OK)
         else:
             page.followers.remove(follower)
@@ -725,6 +739,8 @@ class FollowUnfollowPage(generics.UpdateAPIView):
                 user_id=follower.id)
             instance = user_interests[0]
             instance.followed_pages.remove(page)
+            page.number_of_followers -= 1
+            page.save()
             return Response(f'{page} unfollowed', status=status.HTTP_200_OK)
 
 
@@ -751,6 +767,12 @@ class MyFollowedPages(generics.ListAPIView):
 
 
 class PostListCreateView(generics.ListCreateAPIView):
+    '''
+    For post share, send additional data:
+        "shared_post": "pk"
+        It will share the post with another post. 
+        In such case, frontend will call retrieve request for post of pk to get the info of sharing post and integrate that too.
+    '''
     def create(self, request, *args, **kwargs):
         if len(request.data) == 0:
             raise NotAcceptable("Please provide data.")
@@ -790,6 +812,10 @@ class PostListCreateView(generics.ListCreateAPIView):
         return super().create(request, *args, **kwargs)
 
     def list(self, request, *args, **kwargs):
+        '''
+        For posts which share other post, will contain shared_post an integer which is id of the post.
+        Front end must take care of those too so that user can see the shared and sharing post at the same page.
+        '''
         if (request.data.get('user') is None) and (request.data.get('page') is None):
             raise NotAcceptable(
                 detail="Please provide id of user or page whose posts you seek.")
@@ -832,6 +858,10 @@ class PostListCreateView(generics.ListCreateAPIView):
 
 class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
     def retrieve(self, request, *args, **kwargs):
+        '''
+        For posts which share other post, will contain shared_post an integer which is id of the post.
+        Front end must take care of those too so that user can see the shared and sharing post at the same page.
+        '''
         if kwargs.get('pk') is None:
             raise NotAcceptable(detail="Please provide pk of post.")
         return super().retrieve(request, *args, **kwargs)
@@ -891,6 +921,10 @@ class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
             page = post.page
             if requesting_user.id != page.creator_id:
                 raise NotAuthenticated('You are not authorized for this action.')
+        shared_post = post.shared_post
+        if shared_post is not None:
+            shared_post.number_of_shares -= 1
+            shared_post.save()
         return super().destroy(request, *args, **kwargs)
     def get_queryset(self):
         try:

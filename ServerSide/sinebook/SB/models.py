@@ -40,9 +40,6 @@ class Page(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def number_of_followers(self):
-        self.number_of_followers = self.followers.all().count()
-        return self.number_of_followers
     def __str__(self):
         return self.title
 
@@ -85,11 +82,14 @@ class Post(models.Model):
                              related_name="posting_page", null=True, blank=True)
     description = models.TextField(max_length=200, blank=True, null=True)
     image = models.ImageField(null=True, blank=True)
+    shared_post = models.ForeignKey("self", on_delete=models.CASCADE, blank=True, null=True, related_name="sharing_post")
     likes = models.ManyToManyField(
         User, blank=True, related_name="liking_users", through='Like')
     number_of_likes = models.IntegerField(
         validators=[MinValueValidator(0)], default=0)
     number_of_comments = models.IntegerField(
+        validators=[MinValueValidator(0)], default=0)
+    number_of_shares = models.IntegerField(
         validators=[MinValueValidator(0)], default=0)
     effective_number_of_comments = models.IntegerField(
         validators=[MinValueValidator(0)], default=0)
@@ -100,19 +100,8 @@ class Post(models.Model):
     tags = models.ManyToManyField(Tags, blank=True, related_name="post_tags")
     posted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
-    def number_of_likes(self):
-        self.number_of_likes = self.likes.all().count()
-        return self.number_of_likes
-
-    def number_of_comments(self):
-        self.number_of_comments = Comment.objects.filter(
-            post_id=self.id).count()
-        return self.number_of_comments
-
-    def effective_number_of_comments(self):
-        self.effective_number_of_comments = Comment.objects.filter(post_id = self.id).exclude(user_id = self.user.id).count()
-        return self.effective_number_of_comments
+    def score(self):
+        return self.number_of_likes*0.25 + self.effective_number_of_comments*0.35 + self.number_of_shares*0.40
 
 class HashTag(models.Model):
     tag = models.ForeignKey(Tags, on_delete=models.DO_NOTHING, null=True)
@@ -138,9 +127,6 @@ class Comment(models.Model):
     commented_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    def number_of_likes(self):
-        self.number_of_likes = self.likes.all().count()
-        return self.number_of_likes
 
     class Meta:
         ordering = ['-commented_at']
@@ -174,7 +160,6 @@ class Like(models.Model):
         user_interest.likes.add(self)
         return data
 
-
 class UserInterest(models.Model):
     user = models.ForeignKey(
         User, on_delete=models.CASCADE, related_name='liker_or_commentor')
@@ -182,6 +167,7 @@ class UserInterest(models.Model):
         Like, blank=True, related_name="liked_posts")
     comments = models.ManyToManyField(
         Comment, blank=True, related_name="commented_posts")
+    shares = models.ManyToManyField(Post, blank=True, related_name="shares")
     followed_pages = models.ManyToManyField(
         Page, blank=True, related_name="followed_pages")
 

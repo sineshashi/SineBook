@@ -10,8 +10,8 @@ class SBUserAdmin(admin.ModelAdmin):
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user', 'page', 'description', 'image', 'number_of_likes',
-                    'number_of_comments', 'effective_number_of_comments', 'who_can_see', 'who_can_comment', 'posted_at', 'updated_at']
+    list_display = ['id', 'user', 'page', 'description', 'image', 'shared_post', 'number_of_likes', 'number_of_shares',
+                    'number_of_comments', 'effective_number_of_comments', 'score', 'who_can_see', 'who_can_comment', 'posted_at', 'updated_at']
 
 
 
