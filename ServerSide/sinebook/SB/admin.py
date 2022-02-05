@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Like, LikedOrCommentedPosts, SBUser, Post, Comment, FriendRequest, HashTag
+from .models import FavouriteField, Like, UserInterest, Page, SBUser, Post, Comment, FriendRequest, HashTag
 
 
 @admin.register(SBUser)
@@ -10,8 +10,8 @@ class SBUserAdmin(admin.ModelAdmin):
 
 @admin.register(Post)
 class PostAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user', 'description', 'image', 'number_of_likes',
-                    'number_of_comments', 'who_can_see', 'who_can_comment', 'posted_at', 'updated_at']
+    list_display = ['id', 'user', 'page', 'description', 'image', 'number_of_likes',
+                    'number_of_comments', 'effective_number_of_comments', 'who_can_see', 'who_can_comment', 'posted_at', 'updated_at']
 
 
 
@@ -29,10 +29,18 @@ class FriendRequestAdmin(admin.ModelAdmin):
 class LikeAdmin(admin.ModelAdmin):
     list_display = ['id', 'liker', 'post', 'liked_at']
 
-@admin.register(LikedOrCommentedPosts)
+@admin.register(UserInterest)
 class LikedOrCommentedPostsAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user', 'likes', 'comments']
+    list_display = ['id', 'user']
 
 @admin.register(HashTag)
 class HashTagAdmin(admin.ModelAdmin):
-    list_display = ['id', 'tag_name']
+    list_display = ['id', 'tag']
+
+@admin.register(Page)
+class PageAdmin(admin.ModelAdmin):
+    list_display = ['id', 'title', 'image', 'creator', 'description', 'number_of_followers', 'created_at', 'updated_at']
+
+@admin.register(FavouriteField)
+class FavouriteFieldsAdmin(admin.ModelAdmin):
+    list_display = ['field']

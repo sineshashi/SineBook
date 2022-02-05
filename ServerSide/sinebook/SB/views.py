@@ -1,17 +1,23 @@
+from ast import Not
 from tkinter import N
+from urllib import request
 from django.contrib.auth.hashers import make_password
-from .models import FriendRequest, SBUser, Post, Comment
+from .models import FriendRequest, UserInterest, Page, SBUser, Post, Comment, Tags, Like
 from django.contrib.auth.models import User
 from rest_framework import generics, status
-from .serializers import (FriendRequestSerializer, RegisterSBUserSerializer, UpdateProfileSerialier, PostSerializer,
-                          CommentSerializer, PostRetrieveSerializer, PostRDSerializer, PostUSerializer,
-                          CommentLRDSerializerForPoster, CommentLRSerializerForUser, CommentRDSerializerForCommentor, CommentUpdateSerializer,
+from .serializers import (FriendRequestSerializer, PageCreateSerializer, PageRetrieveSerializerByMember,
+                          PageUpdateByMemberSerializer, PageUpdateDestroyByCreatorSerializer, PostByPageCreateSerializer, PostByPageListSerializer, PostByPageRetrieveByMemberSerializer, PostByPageRetrieveByOtherSerializer, PostByPageUpdateDestroySerializer, PostByUserCreateSerializer, PostByUserListSerializer, PostByUserRetrieveByOtherSerializer, PostByUserRetrieveByPosterSerializer, PostByUserUpdateDestroySerializer, PostLikeSerializer, RegisterSBUserSerializer,
+                          RertriveWithOutIDProfileSerialier, RetrievePageByUserSerializer, UpdateProfileSerialier,
+                          CommentSerializer,
+                          CommentLRDSerializerForPoster, CommentLRSerializerForUser, CommentRDSerializerForCommentor,
+                          CommentUpdateSerializer,
                           RetrieveProfileSerializer, ListFriendsSerializer)
 from rest_framework.exceptions import NotAcceptable, NotAuthenticated
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 import json
 from django.core.exceptions import ObjectDoesNotExist
+
 
 class RegisterUserView(generics.CreateAPIView):
     '''
@@ -25,7 +31,8 @@ class RegisterUserView(generics.CreateAPIView):
         },
         "mobile_number": " ",
         "date_of_birth" : " ",
-        "image": " "
+        "image": " ",
+        "favourite_fields": []
     }
     It automatically sets username = email.
     '''
@@ -75,8 +82,14 @@ class RegisterUserView(generics.CreateAPIView):
         request.data['user']['password'] = password
         request.data['user']['username'] = request.data['user']['email']
         return super().create(request, *args, **kwargs)
-    queryset = SBUser.objects.all()
     serializer_class = RegisterSBUserSerializer
+
+
+class RetrieveProfileWithoutId(generics.ListAPIView):
+    def get_queryset(self):
+        return SBUser.objects.filter(user_id=self.request.user.id)
+    serializer_class = RertriveWithOutIDProfileSerialier
+    permission_classes = [IsAuthenticated]
 
 
 class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
@@ -134,30 +147,6 @@ class UpdateProfileView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
 
-class Postview(generics.CreateAPIView):
-    def create(self, request, *args, **kwargs):
-        '''
-        request.data = {
-            "description" : " ",
-            "image" : "  "
-        } 
-        It posts a post on SIneBook.
-        '''
-        if len(request.data) == 0:
-            raise NotAcceptable(detail="No data provided.")
-        request.data['user'] = self.request.user.id
-        if (request.data.get('description') is None) and (request.data.get('image') is None):
-            raise NotAcceptable(detail="Please provide data to post.")
-        if request.data.get('description') is None:
-            description = str(request.data.get('description'))
-            if description.count('#') > 10:
-                raise NotAcceptable(detail="You can not use more than 10 hash tags.")
-        return super().create(request, *args, **kwargs)
-    queryset = Post.objects.all()
-    serializer_class = PostSerializer
-    permission_classes = [IsAuthenticated]
-
-
 class PostLikeView(generics.UpdateAPIView):
     permission_classes = [IsAuthenticated]
 
@@ -165,7 +154,6 @@ class PostLikeView(generics.UpdateAPIView):
         '''
         It likes the post of given pk if it is not liked earlier, else it will unlike it.
         '''
-        kwargs['partial'] = True
         post = Post.objects.filter(id=kwargs['pk']).first()
         if post is None:
             raise NotAcceptable(detail="Provide right post id.")
@@ -173,7 +161,10 @@ class PostLikeView(generics.UpdateAPIView):
             post.likes.remove(self.request.user.id)
             return Response("Post has been unliked", status=status.HTTP_200_OK)
         else:
-            post.likes.add(self.request.user.id)
+            data = {"liker": self.request.user.id, "post": post.id}
+            serializer = PostLikeSerializer(data = data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
             return Response("Post has been liked.", status=status.HTTP_200_OK)
 
 
@@ -204,7 +195,6 @@ class CommentView(generics.CreateAPIView):
                 raise NotAcceptable(
                     detail="You are not friend of the user and only his/her friends can comment on this post.")
         return super().create(request, *args, **kwargs)
-    queryset = Comment.objects.all()
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
 
@@ -227,72 +217,6 @@ class CommentLikeView(generics.UpdateAPIView):
         else:
             comment.likes.add(self.request.user.id)
             return Response("comment has been liked.", status=status.HTTP_200_OK)
-
-
-class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
-    def retrieve(self, request, *args, **kwargs):
-        '''
-        Retrieves any post and manages who_can_see and who_can_comment fields also.
-        '''
-        post_id = kwargs['pk']
-        try:
-            post = Post.objects.get(id=post_id)
-        except ObjectDoesNotExist:
-            raise NotAcceptable(detail="Provide right primary key.")
-        post_user = post.user_id
-        requesting_user = self.request.user
-        sbuser = SBUser.objects.get(user_id=post_user)
-        if post_user != requesting_user.id:
-            if post.who_can_see == 'None':
-                raise NotAcceptable(
-                    detail="You are not authorized for this action.")
-            if post.who_can_see == 'Friends':
-                if sbuser.friends.filter(user_id=requesting_user.id).exists() == False:
-                    raise NotAcceptable(
-                        detail="You are not a friend of the user and he/she has kept this post for friends only.")
-        return super().retrieve(request, *args, **kwargs)
-
-    def update(self, request, *args, **kwargs):
-        if kwargs.get('pk') is None:
-            raise NotAcceptable(detail="Please Provide details.")
-        try:
-            post = Post.objects.get(id=kwargs['pk'])
-        except ObjectDoesNotExist:
-            raise NotAcceptable(detail="Provide right primary key.")
-        if self.request.user.id != post.user_id:
-            raise NotAcceptable(
-                detail="You are not authorized for this action.")
-        kwargs['partial'] = True
-        if request.data.get('description') is None:
-            description = str(request.data.get('description'))
-            if description.count('#') > 10:
-                raise NotAcceptable(detail="You can not use more than 10 hash tags.")
-        return super().update(request, *args, **kwargs)
-
-    def destroy(self, request, *args, **kwargs):
-        if kwargs.get('pk') is None:
-            raise NotAcceptable(detail="Please Provide details.")
-        try:
-            post = Post.objects.get(id=kwargs['pk'])
-        except ObjectDoesNotExist:
-            raise NotAcceptable(detail="Provide right primary key.")
-        if self.request.user.id != post.user_id:
-            raise NotAcceptable(
-                detail="You are not authorized for this action.")
-        return super().destroy(request, *args, **kwargs)
-    queryset = Post.objects.all()
-
-    def get_serializer_class(self, *args, **kwargs):
-        post = Post.objects.get(id=self.kwargs['pk'])
-        if self.request.user.id == post.user_id:
-            if (self.request.method == 'PUT') or (self.request.method == 'PATCH'):
-                return PostUSerializer
-            else:
-                return PostRDSerializer
-        else:
-            return PostRetrieveSerializer
-    serializer_class = get_serializer_class
-    permission_classes = [IsAuthenticated]
 
 
 class CommentListView(generics.ListAPIView):
@@ -405,31 +329,6 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
 
-class PostListsofProfileView(generics.ListAPIView):
-    def list(self, request, *args, **kwargs):
-        '''
-        Lists all the posts of a given user.
-        '''
-        if kwargs.get('pk') is None:
-            raise NotAcceptable(detail="Please provide user id.")
-        return super().list(request, *args, **kwargs)
-
-    def get_queryset(self):
-        requesting_user = self.request.user
-        requested_userid = self.kwargs['pk']
-        if requesting_user.id == requested_userid:
-            return Post.objects.filter(user_id=requested_userid)
-        else:
-            requesting_sb_user = SBUser.objects.get(user_id=requesting_user.id)
-            requested_sb_user = SBUser.objects.get(user_id=requested_userid)
-            if requesting_sb_user not in requested_sb_user.friends.all():
-                return Post.objects.filter(user_id=requested_userid, who_can_see='Public')
-            else:
-                return Post.objects.filter(user_id=requested_userid).exclude(who_can_see='None')
-    serializer_class = PostRetrieveSerializer
-    permission_classes = [IsAuthenticated]
-
-
 class ListFriends(generics.ListAPIView):
     def list(self, request, *args, **kwargs):
         '''
@@ -476,9 +375,11 @@ class RetrieveProfileView(generics.RetrieveAPIView):
             raise NotAcceptable(detail="Please provide user id.")
         if self.request.user.id == kwargs['pk']:
             try:
-                requested_data = SBUser.objects.get(user_id=self.request.user.id)
+                requested_data = SBUser.objects.get(
+                    user_id=self.request.user.id)
             except ObjectDoesNotExist:
-                raise NotAcceptable(detail="This user is not registered completely.")
+                raise NotAcceptable(
+                    detail="This user is not registered completely.")
             serializer = RetrieveProfileSerializer(requested_data)
             return Response(serializer.data, status=status.HTTP_200_OK)
         else:
@@ -486,7 +387,8 @@ class RetrieveProfileView(generics.RetrieveAPIView):
                 requesting_sb_user = SBUser.objects.get(
                     user_id=self.request.user.id)
             except ObjectDoesNotExist:
-                raise NotAcceptable(detail="This user is not registered completely.")
+                raise NotAcceptable(
+                    detail="This user is not registered completely.")
             try:
                 requested_sb_user = SBUser.objects.get(user_id=kwargs['pk'])
             except ObjectDoesNotExist:
@@ -644,3 +546,403 @@ class UnfriendView(generics.UpdateAPIView):
         requesting_sb_user = SBUser.objects.get(user_id=requesting_user_id)
         requesting_sb_user.friends.remove(unfriending_sb_user)
         return Response(f"You have unfriended {unfriending_sb_user}.", status=status.HTTP_200_OK)
+
+
+class PageCreateView(generics.CreateAPIView):
+    def create(self, request, *args, **kwargs):
+        if len(request.data) == 0:
+            raise NotAcceptable(detail="Please provide data.")
+        if request.data.get('title') is None:
+            raise NotAcceptable(detail="Please provide page title.")
+        request.data['creator'] = self.request.user.id
+        if request.data.get('tags') is not None:
+            if '#' in str(request.data['tags']):
+                raise NotAcceptable(
+                    "Do not use # in the tags, write them only seperated by , and whitespace. as 'love, affection, romance'")
+            tags_list = str(request.data['tags']).split(', ')
+            if len(tags_list) > 10:
+                raise NotAcceptable("Do not use tags more than 10.")
+            tag_id_list = []
+            for tag in tags_list:
+                tag = tag.strip()
+                tag = tag.casefold()
+                tag_instance_tuple = Tags.objects.get_or_create(
+                    tag_name=tag)
+                tag_instance = tag_instance_tuple[0]
+                tag_id_list.append(tag_instance.id)
+            request.data['tags'] = tag_id_list
+        return super().create(request, *args, **kwargs)
+    serializer_class = PageCreateSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class PageRUDView(generics.RetrieveUpdateDestroyAPIView):
+    def retrieve(self, request, *args, **kwargs):
+        if kwargs.get('pk') is None:
+            raise NotAcceptable(detail="Please Provide page id.")
+        return super().retrieve(request, *args, **kwargs)
+
+    def update(self, request, *args, **kwargs):
+        if kwargs.get('pk') is None:
+            raise NotAcceptable(detail="Please Provide page id.")
+        try:
+            page = Page.objects.get(id=kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable("Please provide correct page id.")
+        if (self.request.user.id != page.creator_id) and (page.members.filter(id=self.request.user.id).exists() == False):
+            raise NotAuthenticated("you are not authorized for this action.")
+        kwargs['partial'] = True
+        if request.data.get('tags') is not None:
+            if '#' in str(request.data['tags']):
+                raise NotAcceptable(
+                    "Do not use # in the tags, write them only seperated by , and whitespace. as 'love, affection, romance'")
+            tags_list = str(request.data['tags']).split(', ')
+            if len(tags_list) > 10:
+                raise NotAcceptable("Do not use tags more than 10.")
+            tag_id_list = []
+            for tag in tags_list:
+                tag = tag.strip()
+                tag = tag.casefold()
+                tag_instance_tuple = Tags.objects.get_or_create(
+                    tag_name=tag)
+                tag_instance = tag_instance_tuple[0]
+                tag_id_list.append(tag_instance.id)
+            request.data['tags'] = tag_id_list
+        return super().update(request, *args, **kwargs)
+
+    def destroy(self, request, *args, **kwargs):
+        if kwargs.get('pk') is None:
+            raise NotAcceptable(detail="Please Provide page id.")
+        try:
+            page = Page.objects.get(id=kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable("Please provide correct page id.")
+        if self.request.user.id != page.creator_id:
+            raise NotAuthenticated("you are not authorized for this action.")
+        return super().destroy(request, *args, **kwargs)
+    queryset = Page.objects.all()
+
+    def get_serializer_class(self):
+        try:
+            page = Page.objects.get(id=self.kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable("Provide right page id.")
+        page_creator_id = page.creator_id
+        requesting_user_id = self.request.user.id
+        method = self.request.method
+        if page_creator_id == requesting_user_id:
+            if (method == 'PUT') or (method == 'DELETE'):
+                return PageUpdateDestroyByCreatorSerializer
+        if (page_creator_id != requesting_user_id) and (page.members.filter(id=requesting_user_id).exists()):
+            if method == 'PUT':
+                return PageUpdateByMemberSerializer
+        if (page_creator_id == requesting_user_id) or (page.members.filter(id=requesting_user_id).exists()):
+            if method == 'GET':
+                return PageRetrieveSerializerByMember
+        if (page_creator_id != requesting_user_id) and (page.members.filter(id=requesting_user_id).exists() == False):
+            if method == 'GET':
+                return RetrievePageByUserSerializer
+        else:
+            raise NotAcceptable("You are not authorized for this action.")
+    serializer_class = get_serializer_class
+    permission_classes = [IsAuthenticated]
+
+
+class AddMemberView(generics.CreateAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        if len(request.data) == 0:
+            raise NotAcceptable(detail="provide data")
+        if request.data.get('page') is None:
+            raise NotAcceptable(detail="Provide page id.")
+        if request.data.get('member') is None:
+            raise NotAcceptable(detail="Please Provide user id of member.")
+        try:
+            page = Page.objects.get(id=request.data['page'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right page id.")
+        try:
+            member = User.objects.get(id=request.data['member'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right user id of member.")
+        if page.creator_id != self.request.user.id:
+            raise NotAuthenticated("You are not authorized for this action.")
+        if page.members.filter(id=member.id).exists():
+            raise NotAcceptable(detail=f"{member} is already a member.")
+        page.members.add(member)
+        return Response(f"{member} is now member of the page {page}")
+
+
+class RemoveMemberView(generics.CreateAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        if len(request.data) == 0:
+            raise NotAcceptable(detail="provide data")
+        if request.data.get('page') is None:
+            raise NotAcceptable(detail="Provide page id.")
+        if request.data.get('member') is None:
+            raise NotAcceptable(detail="Please Provide user id of member.")
+        try:
+            page = Page.objects.get(id=request.data['page'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right page id.")
+        try:
+            member = User.objects.get(id=request.data['member'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable(detail="Provide right user id of member.")
+        if page.creator_id != self.request.user.id:
+            raise NotAuthenticated("You are not authorized for this action.")
+        if page.members.filter(id=member.id).exists() == False:
+            raise NotAcceptable(detail=f"{member} is already not a member.")
+        page.members.remove(member)
+        return Response(f"{member} is no more a member of the page {page}")
+
+
+class FollowUnfollowPage(generics.UpdateAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def update(self, request, *args, **kwargs):
+        if kwargs.get('pk') is None:
+            raise NotAcceptable(detail="Please provide page id.")
+        kwargs['partial'] = True
+        try:
+            page = Page.objects.get(id=kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable("Use right user id.")
+        follower = self.request.user
+        if page.followers.filter(id=follower.id).exists() == False:
+            page.followers.add(follower)
+            user_interests = UserInterest.objects.get_or_create(
+                user_id=follower.id)
+            instance = user_interests[0]
+            instance.followed_pages.add(page)
+            return Response(f'{page} followed.', status=status.HTTP_200_OK)
+        else:
+            page.followers.remove(follower)
+            user_interests = UserInterest.objects.get_or_create(
+                user_id=follower.id)
+            instance = user_interests[0]
+            instance.followed_pages.remove(page)
+            return Response(f'{page} unfollowed', status=status.HTTP_200_OK)
+
+
+class CreatedPagesOfProfile(generics.ListAPIView):
+    def list(self, request, *args, **kwargs):
+        if kwargs.get('pk') is None:
+            raise NotAcceptable(detail="Provide user id of the creator.")
+        return super().list(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return Page.objects.filter(creator_id=self.kwargs['pk'])
+    serializer_class = RetrievePageByUserSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class MyFollowedPages(generics.ListAPIView):
+    def get_queryset(self):
+        interest = UserInterest.objects.get_or_create(
+            user_id=self.request.user.id)
+        instance = interest[0]
+        return instance.followed_pages.all()
+    serializer_class = RetrievePageByUserSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class PostListCreateView(generics.ListCreateAPIView):
+    def create(self, request, *args, **kwargs):
+        if len(request.data) == 0:
+            raise NotAcceptable("Please provide data.")
+        if (request.data.get('image') is None) and (request.data.get('description') is None):
+            raise NotAcceptable("Please provide post data.")
+        request.data['user'] = self.request.user.id
+        if request.data.get('page') is not None:
+            try:
+                page = Page.objects.get(id=request.data['page'])
+            except ObjectDoesNotExist:
+                raise NotAcceptable("Please provide right page id.")
+            if (page.creator_id != self.request.user.id) and (page.members.filter(id=self.request.user.id)):
+                raise NotAuthenticated(
+                    'You are not a member or creator of this page.')
+        description = request.data.get('description')
+        if description is not None:
+            description = str(description)
+            if str(description).count('#') > 10:
+                raise NotAcceptable(
+                    "You can not use more than 10 hash tags in your post.")
+            words_list = description.split(' ')
+            tags_id_list = []
+            for item in words_list:
+                if item.__contains__('#'):
+                    words = item.split('#')
+                    for word in words:
+                        word = word.replace('.', '')
+                        word = word.casefold()
+                        word = word.strip()
+                        if word != '':
+                            tag_tuple = Tags.objects.get_or_create(
+                                tag_name=word)
+                            tag = tag_tuple[0]
+                            tags_id_list.append(tag.id)
+            if len(tags_id_list) > 0:
+                request.data['tags'] = tags_id_list
+        return super().create(request, *args, **kwargs)
+
+    def list(self, request, *args, **kwargs):
+        if (request.data.get('user') is None) and (request.data.get('page') is None):
+            raise NotAcceptable(
+                detail="Please provide id of user or page whose posts you seek.")
+        if (request.data.get('user') is not None) and (request.data.get('page') is not None):
+            raise NotAcceptable(
+                detail="Please provide only one id, either of page or of user.")
+        return super().list(request, *args, **kwargs)
+
+    def get_queryset(self):
+        if self.request.data.get('page') is not None:
+            return Post.objects.filter(page_id=self.request.data['page'])
+        else:
+            try:
+                requesting_sb_user = SBUser.objects.get(
+                    user_id=self.request.user.id)
+                requested_sb_user = SBUser.objects.get(
+                    user_id=self.request.data['user'])
+            except ObjectDoesNotExist:
+                raise NotAcceptable("provide right user id.")
+            if requested_sb_user.id == requesting_sb_user.id:
+                return Post.objects.filter(user_id=self.request.data['user']).filter(page=None)
+            if requesting_sb_user.friends.filter(id=requested_sb_user.id).exists():
+                return Post.objects.filter(user_id=self.request.data['user']).filter(page=None).exclude(who_can_see='None')
+            else:
+                return Post.objects.filter(user_id=self.request.data['user']).filter(page=None).filter(who_can_see='Public')
+
+    def get_serializer_class(self):
+        if self.request.data.get('page') is None:
+            if self.request.method == 'GET':
+                return PostByUserListSerializer
+            if self.request.method == 'POST':
+                return PostByUserCreateSerializer
+        else:
+            if self.request.method == 'GET':
+                return PostByPageListSerializer
+            if self.request.method == 'POST':
+                return PostByPageCreateSerializer
+    serializer_class = get_serializer_class
+    permission_classes = [IsAuthenticated]
+
+class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
+    def retrieve(self, request, *args, **kwargs):
+        if kwargs.get('pk') is None:
+            raise NotAcceptable(detail="Please provide pk of post.")
+        return super().retrieve(request, *args, **kwargs)
+    def update(self, request, *args, **kwargs):
+        if kwargs.get('pk') is None:
+            raise NotAcceptable("Please provide pk of the post.")
+        requesting_user = self.request.user
+        if request.data.get('tags') is not None:
+            request.data.pop('tags')
+        try:
+            post = Post.objects.get(id = kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable("provide right post id.")
+        if post.page is None:
+            if requesting_user.id != post.user.id:
+                raise NotAuthenticated('You are not authorized for this action.')
+        else:
+            page = post.page
+            if (requesting_user.id != page.creator_id) and (page.members.filter(id = requesting_user.id).exists() == False):
+                raise NotAuthenticated('You are not authorized for this action.')
+        description = request.data.get('description')
+        if description is not None:
+            description = str(description)
+            if str(description).count('#') > 10:
+                raise NotAcceptable(
+                    "You can not use more than 10 hash tags in your post.")
+            words_list = description.split(' ')
+            tags_id_list = []
+            for item in words_list:
+                if item.__contains__('#'):
+                    words = item.split('#')
+                    for word in words:
+                        word = word.replace('.', '')
+                        word = word.casefold()
+                        word = word.strip()
+                        if word != '':
+                            tag_tuple = Tags.objects.get_or_create(
+                                tag_name=word)
+                            tag = tag_tuple[0]
+                            tags_id_list.append(tag.id)
+            if len(tags_id_list) > 0:
+                request.data['tags'] = tags_id_list
+        kwargs['partial'] = True
+        return super().update(request, *args, **kwargs)
+    def destroy(self, request, *args, **kwargs):
+        if kwargs.get('pk') is None:
+            raise NotAcceptable("Please provide pk of the post.")
+        requesting_user = self.request.user
+        try:
+            post = Post.objects.get(id = kwargs['pk'])
+        except ObjectDoesNotExist:
+            raise NotAcceptable("provide right post id.")
+        if post.page is None:
+            if requesting_user.id != post.user.id:
+                raise NotAuthenticated('You are not authorized for this action.')
+        else:
+            page = post.page
+            if requesting_user.id != page.creator_id:
+                raise NotAuthenticated('You are not authorized for this action.')
+        return super().destroy(request, *args, **kwargs)
+    def get_queryset(self):
+        try:
+            post = Post.objects.get(id = self.kwargs['pk'])
+            requesting_userid = self.request.user.id
+            posterid = post.user_id
+            requesting_sb_user = SBUser.objects.get(user_id = requesting_userid)
+        except ObjectDoesNotExist:
+            raise NotAcceptable("Provide right post id.")
+        if post.page is not None:
+            return Post.objects.filter(id =  self.kwargs['pk'])
+        else:
+            if post.who_can_see == 'Public':
+                return Post.objects.filter(id =  self.kwargs['pk'])
+            if post.who_can_see == 'Friends':
+                if (requesting_userid != posterid) and (requesting_sb_user.friends.filter(user_id = posterid).exists() == False):
+                    raise NotAuthenticated('You are not authorized for this action as you should be the friend of the poster.')
+                else:
+                    return Post.objects.filter(id =  self.kwargs['pk'])
+            else:
+                if requesting_userid != posterid:
+                    raise NotAuthenticated("This is a private post, you can not open it.")
+                else:
+                    return Post.objects.filter(id =  self.kwargs['pk'])
+    def get_serializer_class(self):
+        try:
+            post = Post.objects.get(id = self.kwargs['pk'])
+            requesting_userid = self.request.user.id
+        except ObjectDoesNotExist:
+            raise NotAcceptable("Provide right post id.")
+        method = self.request.method
+        if post.page is None:
+            if post.user_id != requesting_userid:
+                if method == 'GET':
+                    return PostByUserRetrieveByOtherSerializer
+                else:
+                    raise NotAuthenticated("You are not autherized for this action.")
+            else:
+                if method == 'GET':
+                    return PostByUserRetrieveByPosterSerializer
+                else:
+                    return PostByUserUpdateDestroySerializer
+        else:
+            if (post.page.creator_id != requesting_userid) and (post.page.members.filter(id = requesting_userid).exists() == False):
+                if method == 'GET':
+                    return PostByPageRetrieveByOtherSerializer
+                else:
+                    raise NotAuthenticated("You are not authorized for this action.")
+            else:
+                if method == 'GET':
+                    return PostByPageRetrieveByMemberSerializer
+                else:
+                    return PostByPageUpdateDestroySerializer
+    serializer_class = get_serializer_class
+    permission_classes = [IsAuthenticated]

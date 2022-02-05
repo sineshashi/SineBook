@@ -12,10 +12,45 @@ Display_Choices = (
 )
 
 
+class FavouriteField(models.Model):
+    field = models.CharField(max_length=255)
+
+
+class Tags(models.Model):
+    tag_name = models.CharField(max_length=500, unique=True)
+
+    def __str__(self):
+        return self.tag_name
+
+
+class Page(models.Model):
+    title = models.CharField(max_length=255)
+    description = models.TextField(max_length=5000)
+    image = models.ImageField(null=True, blank=True)
+    fields = models.ManyToManyField(
+        FavouriteField, related_name="page_related_fields")
+    tags = models.ManyToManyField(Tags, blank=True, related_name="page_tags")
+    creator = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="page_creator")
+    members = models.ManyToManyField(
+        User, blank=True, related_name="page_members")
+    followers = models.ManyToManyField(
+        User, blank=True, related_name="page_followers")
+    number_of_followers = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def number_of_followers(self):
+        self.number_of_followers = self.followers.all().count()
+        return self.number_of_followers
+    def __str__(self):
+        return self.title
+
+
 class SBUser(models.Model):
     user = models.OneToOneField(
         User, blank=False, null=False, on_delete=models.CASCADE)
-    mobile_number = PhoneNumberField()
+    mobile_number = PhoneNumberField(unique=True)
     date_of_birth = models.DateField()
     image = models.ImageField(null=True, blank=True)
     your_first_school = models.CharField(blank=True, null=True, max_length=255)
@@ -24,6 +59,8 @@ class SBUser(models.Model):
     your_address = models.CharField(blank=True, null=True, max_length=255)
     favourite_movies = models.CharField(blank=True, null=True, max_length=255)
     favourite_books = models.CharField(blank=True, null=True, max_length=255)
+    favourite_fields = models.ManyToManyField(
+        FavouriteField, blank=True, related_name="user_favourite_fields")
     tell_your_friends_about_you = models.TextField(
         max_length=500, blank=True, null=True)
     friends = models.ManyToManyField("self", blank=True)
@@ -37,13 +74,15 @@ class SBUser(models.Model):
         choices=Display_Choices, max_length=255, default='Public')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
     def __str__(self):
         return self.user.username
 
 
-
 class Post(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
+    page = models.ForeignKey(Page, on_delete=models.CASCADE,
+                             related_name="posting_page", null=True, blank=True)
     description = models.TextField(max_length=200, blank=True, null=True)
     image = models.ImageField(null=True, blank=True)
     likes = models.ManyToManyField(
@@ -52,10 +91,13 @@ class Post(models.Model):
         validators=[MinValueValidator(0)], default=0)
     number_of_comments = models.IntegerField(
         validators=[MinValueValidator(0)], default=0)
+    effective_number_of_comments = models.IntegerField(
+        validators=[MinValueValidator(0)], default=0)
     who_can_see = models.CharField(
         choices=Display_Choices, max_length=255, default='Public')
     who_can_comment = models.CharField(
         choices=Display_Choices, max_length=255, default='Public')
+    tags = models.ManyToManyField(Tags, blank=True, related_name="post_tags")
     posted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -68,11 +110,21 @@ class Post(models.Model):
             post_id=self.id).count()
         return self.number_of_comments
 
+    def effective_number_of_comments(self):
+        self.effective_number_of_comments = Comment.objects.filter(post_id = self.id).exclude(user_id = self.user.id).count()
+        return self.effective_number_of_comments
+
 class HashTag(models.Model):
-    tag_name = models.CharField(max_length=500)
-    posts = models.ManyToManyField(Post, blank=True, related_name = "tagged_posts")
+    tag = models.ForeignKey(Tags, on_delete=models.DO_NOTHING, null=True)
+    posts = models.ManyToManyField(
+        Post, blank=True, related_name="tagged_posts")
+    pages = models.ManyToManyField(
+        Page, blank=True, related_name="tagged_pages")
+
     def __str__(self):
-        return self.tag_name
+        return self.tag.tag_name
+
+
 class Comment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, on_delete=models.CASCADE)
@@ -89,8 +141,15 @@ class Comment(models.Model):
     def number_of_likes(self):
         self.number_of_likes = self.likes.all().count()
         return self.number_of_likes
+
     class Meta:
         ordering = ['-commented_at']
+    def save(self, *args, **kwargs):
+        data = super().save(*args, **kwargs)
+        user_interest_tuple = UserInterest.objects.get_or_create(user = self.user)
+        user_interest = user_interest_tuple[0]
+        user_interest.comments.add(self)
+        return data
 
 
 class FriendRequest(models.Model):
@@ -105,16 +164,24 @@ class Like(models.Model):
     liker = models.ForeignKey(User, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, on_delete=models.CASCADE)
     liked_at = models.DateTimeField(auto_now=True)
+
     class Meta:
         ordering = ['-liked_at']
+    def save(self, *args, **kwargs):
+        data = super().save(*args, **kwargs)
+        user_interest_tuple = UserInterest.objects.get_or_create(user = self.liker)
+        user_interest = user_interest_tuple[0]
+        user_interest.likes.add(self)
+        return data
 
-class LikedOrCommentedPosts(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='liker_or_commentor')
-    likes = models.ManyToManyField(Like, blank=True, related_name="liked_posts")
-    comments = models.ManyToManyField(Comment, blank=True, related_name="commented_posts")
-    def likes(self):
-        self.likes = Like.objects.filter(liker = self.user)
-        return self.likes
-    def comments(self):
-        self.comments = Comment.objects.filter(user=self.user)
-        return self.comments
+
+class UserInterest(models.Model):
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='liker_or_commentor')
+    likes = models.ManyToManyField(
+        Like, blank=True, related_name="liked_posts")
+    comments = models.ManyToManyField(
+        Comment, blank=True, related_name="commented_posts")
+    followed_pages = models.ManyToManyField(
+        Page, blank=True, related_name="followed_pages")
+
