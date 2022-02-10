@@ -13,7 +13,9 @@ Display_Choices = (
 
 
 class FavouriteField(models.Model):
-    field = models.CharField(max_length=255)
+    field = models.CharField(max_length=255, unique=True)
+    def __str__(self):
+        return self.field
 
 
 class Tags(models.Model):
@@ -44,20 +46,21 @@ class Page(models.Model):
         return self.title
 
 
+
 class SBUser(models.Model):
     user = models.OneToOneField(
         User, blank=False, null=False, on_delete=models.CASCADE)
     mobile_number = PhoneNumberField(unique=True)
     date_of_birth = models.DateField()
     image = models.ImageField(null=True, blank=True)
-    your_first_school = models.CharField(blank=True, null=True, max_length=255)
+    your_school = models.CharField(blank=True, null=True, max_length=255)
     your_college = models.CharField(blank=True, null=True, max_length=255)
     your_occupation = models.CharField(blank=True, null=True, max_length=255)
-    your_address = models.CharField(blank=True, null=True, max_length=255)
+    your_city = models.CharField(blank=True, null=True, max_length=255)
     favourite_movies = models.CharField(blank=True, null=True, max_length=255)
     favourite_books = models.CharField(blank=True, null=True, max_length=255)
     favourite_fields = models.ManyToManyField(
-        FavouriteField, blank=True, related_name="user_favourite_fields")
+        FavouriteField, related_name="user_favourite_fields")
     tell_your_friends_about_you = models.TextField(
         max_length=500, blank=True, null=True)
     friends = models.ManyToManyField("self", blank=True)
@@ -82,7 +85,8 @@ class Post(models.Model):
                              related_name="posting_page", null=True, blank=True)
     description = models.TextField(max_length=200, blank=True, null=True)
     image = models.ImageField(null=True, blank=True)
-    shared_post = models.ForeignKey("self", on_delete=models.CASCADE, blank=True, null=True, related_name="sharing_post")
+    shared_post = models.ForeignKey(
+        "self", on_delete=models.CASCADE, blank=True, null=True, related_name="sharing_post")
     likes = models.ManyToManyField(
         User, blank=True, related_name="liking_users", through='Like')
     number_of_likes = models.IntegerField(
@@ -98,13 +102,21 @@ class Post(models.Model):
     who_can_comment = models.CharField(
         choices=Display_Choices, max_length=255, default='Public')
     tags = models.ManyToManyField(Tags, blank=True, related_name="post_tags")
+    score = models.FloatField(default=0, validators=[MinValueValidator(0)])
     posted_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    def score(self):
-        return self.number_of_likes*0.25 + self.effective_number_of_comments*0.35 + self.number_of_shares*0.40
+
+    
+    
+'''
+iN calculating score, likes have 25 percent weightage, effective comments have 35 percent weightage and share have 40 percent weightage in determining the score."
+According to the score, we will check the goodness and virallity of the post and will be used in suggesting posts.
+'''
+
+
 
 class HashTag(models.Model):
-    tag = models.ForeignKey(Tags, on_delete=models.DO_NOTHING, null=True)
+    tag = models.OneToOneField(Tags, on_delete=models.DO_NOTHING, null=True)
     posts = models.ManyToManyField(
         Post, blank=True, related_name="tagged_posts")
     pages = models.ManyToManyField(
@@ -128,11 +140,11 @@ class Comment(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
 
-    class Meta:
-        ordering = ['-commented_at']
+
     def save(self, *args, **kwargs):
         data = super().save(*args, **kwargs)
-        user_interest_tuple = UserInterest.objects.get_or_create(user = self.user)
+        user_interest_tuple = UserInterest.objects.get_or_create(
+            user=self.user)
         user_interest = user_interest_tuple[0]
         user_interest.comments.add(self)
         return data
@@ -151,23 +163,43 @@ class Like(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE)
     liked_at = models.DateTimeField(auto_now=True)
 
-    class Meta:
-        ordering = ['-liked_at']
     def save(self, *args, **kwargs):
         data = super().save(*args, **kwargs)
-        user_interest_tuple = UserInterest.objects.get_or_create(user = self.liker)
+        user_interest_tuple = UserInterest.objects.get_or_create(
+            user=self.liker)
         user_interest = user_interest_tuple[0]
         user_interest.likes.add(self)
         return data
 
+class PostShare(models.Model):
+    sharing_post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="post_sharing")
+    shared_post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="post_shared")
+    shared_at = models.DateTimeField(auto_now_add=True)
+    def save(self, *args, **kwargs):
+        data = super().save(*args, **kwargs)
+        user_interest_tuple = UserInterest.objects.get_or_create(
+            user=self.sharing_post.user)
+        user_interest = user_interest_tuple[0]
+        user_interest.shares.add(self)
+        return data
+
 class UserInterest(models.Model):
-    user = models.ForeignKey(
+    user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name='liker_or_commentor')
     likes = models.ManyToManyField(
         Like, blank=True, related_name="liked_posts")
     comments = models.ManyToManyField(
         Comment, blank=True, related_name="commented_posts")
-    shares = models.ManyToManyField(Post, blank=True, related_name="shares")
+    shares = models.ManyToManyField(PostShare, blank=True, related_name="shares")
     followed_pages = models.ManyToManyField(
         Page, blank=True, related_name="followed_pages")
+    posts = models.ManyToManyField(Post, blank=True, related_name="posting_user")
+    suggested_posts = models.ManyToManyField(Post, blank=True, related_name="suggested_posts")
 
+class PagePostList(models.Model):
+    page = models.OneToOneField(Page, on_delete=models.CASCADE, blank=True, null=True, related_name="page_with_posts")
+    posts = models.ManyToManyField(Post, blank=True, related_name = "posts_of_page")
+
+class FieldPages(models.Model):
+    field = models.OneToOneField(FavouriteField, on_delete=models.CASCADE, related_name="page_field")
+    pages = models.ManyToManyField(Page, blank=True, related_name="field_pages")

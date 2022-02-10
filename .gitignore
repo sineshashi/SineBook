@@ -1,3 +1,8 @@
 .env
 /env
 .ServerSide/SB/migrations
+.ServerSide/db.sqlite3
+./ServerSide/SB/migrations
+./ServerSide/db.sqlite3
+/ServerSide/SB/migrations
+/ServerSide/db.sqlite3

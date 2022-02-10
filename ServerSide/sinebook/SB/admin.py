@@ -1,10 +1,10 @@
 from django.contrib import admin
-from .models import FavouriteField, Like, UserInterest, Page, SBUser, Post, Comment, FriendRequest, HashTag
+from .models import FavouriteField, FieldPages, Like, PagePostList, PostShare, UserInterest, Page, SBUser, Post, Comment, FriendRequest, HashTag
 
 
 @admin.register(SBUser)
 class SBUserAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user_id', 'user', 'mobile_number', 'date_of_birth', 'image', 'your_first_school', 'your_college', 'your_occupation', 'your_address', 'favourite_movies', 'favourite_books',
+    list_display = ['id', 'user_id', 'user', 'mobile_number', 'date_of_birth', 'image', 'your_school', 'your_college', 'your_occupation', 'your_city', 'favourite_movies', 'favourite_books',
                     'tell_your_friends_about_you', 'display_email', 'display_mobile', 'display_personal_info', 'display_friends', 'created_at', 'updated_at']
 
 
@@ -44,3 +44,15 @@ class PageAdmin(admin.ModelAdmin):
 @admin.register(FavouriteField)
 class FavouriteFieldsAdmin(admin.ModelAdmin):
     list_display = ['field']
+
+@admin.register(PagePostList)
+class PagePostListAdmin(admin.ModelAdmin):
+    list_display = ['id', 'page']
+
+@admin.register(PostShare)
+class PostShareAdmin(admin.ModelAdmin):
+    list_display = ['id', 'sharing_post', 'shared_post']
+
+@admin.register(FieldPages)
+class FieldPageAdmin(admin.ModelAdmin):
+    list_display = ['id', 'field']

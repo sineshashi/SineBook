@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
-from .models import FriendRequest, HashTag, Like, UserInterest, Page, SBUser, Post, Comment, Tags
+from .models import FieldPages, FriendRequest, HashTag, Like, PagePostList, PostShare, UserInterest, Page, SBUser, Post, Comment, Tags
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -20,7 +20,7 @@ class RegisterSBUserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SBUser
-        fields = ['user', 'mobile_number', 'date_of_birth', 'favourite_fields',
+        fields = ['user', 'mobile_number', 'date_of_birth', 'favourite_fields', 'your_city',
                   'image', 'created_at', 'updated_at']
 
     def create(self, validated_data):
@@ -36,7 +36,7 @@ class UpdateProfileSerialier(serializers.ModelSerializer):
 
     class Meta:
         model = SBUser
-        fields = ['user', 'mobile_number', 'date_of_birth', 'image', 'your_first_school', 'your_college', 'your_occupation', 'your_address', 'favourite_movies', 'favourite_books',
+        fields = ['user', 'mobile_number', 'date_of_birth', 'image', 'your_school', 'your_college', 'your_occupation', 'your_city', 'favourite_movies', 'favourite_books',
                   'tell_your_friends_about_you', 'favourite_fields', 'display_email', 'display_mobile', 'display_personal_info', 'display_friends', 'created_at', 'updated_at']
 
     def update(self, instance, validated_data):
@@ -53,7 +53,7 @@ class RertriveWithOutIDProfileSerialier(serializers.ModelSerializer):
 
     class Meta:
         model = SBUser
-        fields = ['user', 'user_id', 'id', 'mobile_number', 'date_of_birth', 'image', 'your_first_school', 'your_college', 'your_occupation', 'your_address', 'favourite_movies', 'favourite_books',
+        fields = ['user', 'user_id', 'id', 'mobile_number', 'date_of_birth', 'image', 'your_school', 'your_college', 'your_occupation', 'your_city', 'favourite_movies', 'favourite_books',
                   'tell_your_friends_about_you', 'favourite_fields', 'display_email', 'display_mobile', 'display_personal_info', 'display_friends', 'created_at', 'updated_at']
 
 
@@ -76,8 +76,8 @@ class RetrieveProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SBUser
-        fields = ['id', 'user_id', 'user', 'mobile_number', 'date_of_birth', 'image', 'your_first_school', 'your_college',
-                  'your_occupation', 'your_address', 'tell_your_friends_about_you', 'favourite_fields', 'favourite_movies', 'favourite_books', 'created_at', 'updated_at']
+        fields = ['id', 'user_id', 'user', 'mobile_number', 'date_of_birth', 'image', 'your_school', 'your_college',
+                  'your_occupation', 'your_city', 'tell_your_friends_about_you', 'favourite_fields', 'favourite_movies', 'favourite_books', 'created_at', 'updated_at']
 
 
 class TagSerializer(serializers.ModelSerializer):
@@ -85,24 +85,28 @@ class TagSerializer(serializers.ModelSerializer):
         model = Tags
         fields = ['tag_name']
 
+
 class PostLikeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Like
         fields = ['liker', 'post', 'liked_at']
+
+
 class CommentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Comment
         fields = ['id', 'user', 'post', 'comment_on_which_user_can_comment',
                   'comment', 'commented_at', 'updated_at']
+
     def create(self, validated_data):
         comment = super().create(validated_data)
         post = comment.post
         post.number_of_comments += 1
         if comment.user_id != post.user_id:
-            post.effective_number_of_comments +=1
+            post.effective_number_of_comments += 1
+        post.score = post.number_of_likes*0.20 + post.effective_number_of_comments*0.35 + post.number_of_shares*0.45
         post.save()
         return comment
-
 
 
 class CommentLRDSerializerForPoster(serializers.ModelSerializer):
@@ -153,6 +157,11 @@ class PageCreateSerializer(serializers.ModelSerializer):
                 hash_tag_instance.pages.add(page)
         except:
             pass
+        PagePostList.objects.create(page = page)
+        for field in page.fields.all():
+            field_instance_tuple = FieldPages.objects.get_or_create(field = field)
+            field_instance = field_instance_tuple[0]
+            field_instance.pages.add(page)
         return page
 
 
@@ -207,24 +216,35 @@ class RetrievePageByUserSerializer(serializers.ModelSerializer):
         fields = ['title', 'description', 'image',
                   'number_of_followers', 'created_at', 'updated_at']
 
+class PostShareSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PostShare
+        fields = ['sharing_post', 'shared_post', 'created_at']
 
 class PostByUserCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['user', 'description', 'image', 'shared_post', 'tags', 'posted_at', 'updated_at']
+        fields = ['user', 'description', 'image',
+                  'shared_post', 'tags', 'posted_at', 'updated_at']
+
     def create(self, validated_data):
         post = super().create(validated_data)
-        try:
+        if validated_data.get('tags') is not None:
             for tag in post.tags.all():
-                hash_tag_tuple = HashTag.objects.get_or_create(tag_id = tag.id)
+                hash_tag_tuple = HashTag.objects.get_or_create(tag_id=tag.id)
                 hash_tag = hash_tag_tuple[0]
                 hash_tag.posts.add(post)
-        except:
-            pass
+        user_interest = UserInterest.objects.get(user_id = post.user_id)
+        user_interest.posts.add(post)
         shared_post = post.shared_post
         if shared_post is not None:
             shared_post.number_of_shares += 1
+            shared_post.score = shared_post.number_of_likes*0.20 + shared_post.effective_number_of_comments*0.35 + shared_post.number_of_shares*0.45
             shared_post.save()
+            postshare_data = {"sharing_post": post, "shared_post":shared_post}
+            serializer = PostShareSerializer(postshare_data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
         return post
 
 
@@ -233,11 +253,12 @@ class PostByPageCreateSerializer(serializers.ModelSerializer):
         model = Post
         fields = ['user', 'page', 'description', 'shared_post',
                   'image', 'tags', 'posted_at', 'updated_at']
+
     def create(self, validated_data):
         post = super().create(validated_data)
         try:
             for tag in post.tags.all():
-                hash_tag_tuple = HashTag.objects.get_or_create(tag_id = tag.id)
+                hash_tag_tuple = HashTag.objects.get_or_create(tag_id=tag.id)
                 hash_tag = hash_tag_tuple[0]
                 hash_tag.posts.add(post)
         except:
@@ -245,8 +266,17 @@ class PostByPageCreateSerializer(serializers.ModelSerializer):
         shared_post = post.shared_post
         if shared_post is not None:
             shared_post.number_of_shares += 1
+            shared_post.score = shared_post.number_of_likes*0.20 + shared_post.effective_number_of_comments*0.35 + shared_post.number_of_shares*0.45
             shared_post.save()
+            postshare_data = {"sharing_post": post, "shared_post":shared_post}
+            serializer = PostShareSerializer(postshare_data)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+        page_post_tuple = PagePostList.objects.get_or_create(page = post.page)        
+        page_post_instance = page_post_tuple[0]
+        page_post_instance.posts.add(post)
         return post
+
 
 class PostByUserListSerializer(serializers.ModelSerializer):
     class Meta:
@@ -265,14 +295,14 @@ class PostByPageListSerializer(serializers.ModelSerializer):
 class PostByUserRetrieveByOtherSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['user', 'description', 'image', 'shared_post', 'number_of_likes',
+        fields = ['id', 'user', 'description', 'image', 'shared_post', 'number_of_likes',
                   'number_of_comments', 'number_of_shares', 'posted_at', 'updated_at']
-
+    #This and below serializers have been used in listing posts in feed.
 
 class PostByPageRetrieveByOtherSerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['user', 'page', 'description', 'image', 'shared_post', 'number_of_likes',
+        fields = ['id', 'user', 'page', 'description', 'image', 'shared_post', 'number_of_likes',
                   'number_of_comments', 'number_of_shares', 'posted_at', 'updated_at']
 
 
@@ -293,8 +323,9 @@ class PostByPageRetrieveByMemberSerializer(serializers.ModelSerializer):
 class PostByUserUpdateDestroySerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['description', 'image', 'who_can_comment',
+        fields = ['description', 'who_can_comment',
                   'who_can_see', 'tags', 'posted_at', 'updated_at']
+
     def update(self, instance, validated_data):
         if validated_data.get('tags') is not None:
             tags_list = validated_data['tags']
@@ -305,15 +336,20 @@ class PostByUserUpdateDestroySerializer(serializers.ModelSerializer):
                     hash_tag_instance.posts.add(instance)
             except:
                 pass
+        score = instance.number_of_likes*0.20 + instance.effective_number_of_comments*0.35 + instance.number_of_shares*0.45
+        validated_data = {"score": score, **validated_data}
+        if instance.shared_post is not None:
+            shared_post = instance.shared_post
+            shared_post.score = shared_post.number_of_likes*0.20 + shared_post.effective_number_of_comments*0.35 + shared_post.number_of_shares*0.45
+            shared_post.save()
         return super().update(instance, validated_data)
-        
 
 
 class PostByPageUpdateDestroySerializer(serializers.ModelSerializer):
     class Meta:
         model = Post
-        fields = ['description',
-                  'image', 'tags', 'posted_at', 'updated_at']
+        fields = ['description', 'tags', 'posted_at', 'updated_at']
+
     def update(self, instance, validated_data):
         if validated_data.get('tags') is not None:
             tags_list = validated_data['tags']
@@ -324,5 +360,10 @@ class PostByPageUpdateDestroySerializer(serializers.ModelSerializer):
                     hash_tag_instance.posts.add(instance)
             except:
                 pass
+        score = instance.number_of_likes*0.20 + instance.effective_number_of_comments*0.35 + instance.number_of_shares*0.45
+        validated_data = {"score": score, **validated_data}
+        if instance.shared_post is not None:
+            shared_post = instance.shared_post
+            shared_post.score = shared_post.number_of_likes*0.20 + shared_post.effective_number_of_comments*0.35 + shared_post.number_of_shares*0.45
+            shared_post.save()
         return super().update(instance, validated_data)
-

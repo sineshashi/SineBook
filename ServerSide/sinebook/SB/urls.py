@@ -4,7 +4,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 from .views import (AddMemberView, CreatedPagesOfProfile, FollowUnfollowPage, MyFollowedPages,
-                    PageCreateView, PageRUDView, PostListCreateView, PostRUDView, RegisterUserView, RemoveMemberView, UpdateProfileView,
+                    PageCreateView, PageRUDView, PostFeedView, PostListCreateView, PostRUDView, RegisterUserView, RemoveMemberView, UpdateProfileView,
                     PostLikeView, CommentView,
                     CommentLikeView, CommentListView, CommentRDView, ListFriends, RetrieveProfileView,
                     FriendRequestView, AcceptCancelRequestView, UnfriendView, RetrieveProfileWithoutId)
@@ -38,5 +38,6 @@ urlpatterns = [
          name="follow_unfollow_page"),
     path('pages/<int:pk>', CreatedPagesOfProfile.as_view(),
          name="created_pages_by_user"),
-    path('pages', MyFollowedPages.as_view(), name="followed_pages")
+    path('pages', MyFollowedPages.as_view(), name="followed_pages"),
+    path('postfeed', PostFeedView.as_view(), name = "post_feed")
 ]
