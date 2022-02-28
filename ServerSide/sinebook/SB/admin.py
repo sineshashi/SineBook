@@ -56,3 +56,4 @@ class PostShareAdmin(admin.ModelAdmin):
 @admin.register(FieldPages)
 class FieldPageAdmin(admin.ModelAdmin):
     list_display = ['id', 'field']
+

@@ -40,7 +40,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'SB',
     'rest_framework',
-    'phonenumber_field'
+    'phonenumber_field',
+    'django_celery_results',
+    'django_celery_beat'
 ]
 
 MIDDLEWARE = [
@@ -143,3 +145,4 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=31),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=31),
 }
+

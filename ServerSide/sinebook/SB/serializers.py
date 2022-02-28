@@ -104,16 +104,10 @@ class CommentSerializer(serializers.ModelSerializer):
         post.number_of_comments += 1
         if comment.user_id != post.user_id:
             post.effective_number_of_comments += 1
-        post.score = post.number_of_likes*0.20 + post.effective_number_of_comments*0.35 + post.number_of_shares*0.45
+        post.score = post.number_of_likes*0.20 + \
+            post.effective_number_of_comments*0.35 + post.number_of_shares*0.45
         post.save()
         return comment
-
-
-class CommentLRDSerializerForPoster(serializers.ModelSerializer):
-    class Meta:
-        model = Comment
-        fields = ['user', 'post', 'comment_on_which_user_can_comment', 'likes', 'number_of_likes',
-                  'comment', 'commented_at', 'updated_at']
 
 
 class CommentLRSerializerForUser(serializers.ModelSerializer):
@@ -157,9 +151,10 @@ class PageCreateSerializer(serializers.ModelSerializer):
                 hash_tag_instance.pages.add(page)
         except:
             pass
-        PagePostList.objects.create(page = page)
+        PagePostList.objects.create(page=page)
         for field in page.fields.all():
-            field_instance_tuple = FieldPages.objects.get_or_create(field = field)
+            field_instance_tuple = FieldPages.objects.get_or_create(
+                field=field)
             field_instance = field_instance_tuple[0]
             field_instance.pages.add(page)
         return page
@@ -216,10 +211,12 @@ class RetrievePageByUserSerializer(serializers.ModelSerializer):
         fields = ['title', 'description', 'image',
                   'number_of_followers', 'created_at', 'updated_at']
 
+
 class PostShareSerializer(serializers.ModelSerializer):
     class Meta:
         model = PostShare
         fields = ['sharing_post', 'shared_post', 'created_at']
+
 
 class PostByUserCreateSerializer(serializers.ModelSerializer):
     class Meta:
@@ -234,14 +231,16 @@ class PostByUserCreateSerializer(serializers.ModelSerializer):
                 hash_tag_tuple = HashTag.objects.get_or_create(tag_id=tag.id)
                 hash_tag = hash_tag_tuple[0]
                 hash_tag.posts.add(post)
-        user_interest = UserInterest.objects.get(user_id = post.user_id)
+        user_interest = UserInterest.objects.get(user_id=post.user_id)
         user_interest.posts.add(post)
         shared_post = post.shared_post
         if shared_post is not None:
             shared_post.number_of_shares += 1
-            shared_post.score = shared_post.number_of_likes*0.20 + shared_post.effective_number_of_comments*0.35 + shared_post.number_of_shares*0.45
+            shared_post.score = shared_post.number_of_likes*0.20 + \
+                shared_post.effective_number_of_comments * \
+                0.35 + shared_post.number_of_shares*0.45
             shared_post.save()
-            postshare_data = {"sharing_post": post, "shared_post":shared_post}
+            postshare_data = {"sharing_post": post, "shared_post": shared_post}
             serializer = PostShareSerializer(postshare_data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
@@ -266,13 +265,15 @@ class PostByPageCreateSerializer(serializers.ModelSerializer):
         shared_post = post.shared_post
         if shared_post is not None:
             shared_post.number_of_shares += 1
-            shared_post.score = shared_post.number_of_likes*0.20 + shared_post.effective_number_of_comments*0.35 + shared_post.number_of_shares*0.45
+            shared_post.score = shared_post.number_of_likes*0.20 + \
+                shared_post.effective_number_of_comments * \
+                0.35 + shared_post.number_of_shares*0.45
             shared_post.save()
-            postshare_data = {"sharing_post": post, "shared_post":shared_post}
+            postshare_data = {"sharing_post": post, "shared_post": shared_post}
             serializer = PostShareSerializer(postshare_data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
-        page_post_tuple = PagePostList.objects.get_or_create(page = post.page)        
+        page_post_tuple = PagePostList.objects.get_or_create(page=post.page)
         page_post_instance = page_post_tuple[0]
         page_post_instance.posts.add(post)
         return post
@@ -297,7 +298,8 @@ class PostByUserRetrieveByOtherSerializer(serializers.ModelSerializer):
         model = Post
         fields = ['id', 'user', 'description', 'image', 'shared_post', 'number_of_likes',
                   'number_of_comments', 'number_of_shares', 'posted_at', 'updated_at']
-    #This and below serializers have been used in listing posts in feed.
+    # This and below serializers have been used in listing posts in feed.
+
 
 class PostByPageRetrieveByOtherSerializer(serializers.ModelSerializer):
     class Meta:
@@ -336,11 +338,14 @@ class PostByUserUpdateDestroySerializer(serializers.ModelSerializer):
                     hash_tag_instance.posts.add(instance)
             except:
                 pass
-        score = instance.number_of_likes*0.20 + instance.effective_number_of_comments*0.35 + instance.number_of_shares*0.45
+        score = instance.number_of_likes*0.20 + \
+            instance.effective_number_of_comments*0.35 + instance.number_of_shares*0.45
         validated_data = {"score": score, **validated_data}
         if instance.shared_post is not None:
             shared_post = instance.shared_post
-            shared_post.score = shared_post.number_of_likes*0.20 + shared_post.effective_number_of_comments*0.35 + shared_post.number_of_shares*0.45
+            shared_post.score = shared_post.number_of_likes*0.20 + \
+                shared_post.effective_number_of_comments * \
+                0.35 + shared_post.number_of_shares*0.45
             shared_post.save()
         return super().update(instance, validated_data)
 
@@ -360,10 +365,13 @@ class PostByPageUpdateDestroySerializer(serializers.ModelSerializer):
                     hash_tag_instance.posts.add(instance)
             except:
                 pass
-        score = instance.number_of_likes*0.20 + instance.effective_number_of_comments*0.35 + instance.number_of_shares*0.45
+        score = instance.number_of_likes*0.20 + \
+            instance.effective_number_of_comments*0.35 + instance.number_of_shares*0.45
         validated_data = {"score": score, **validated_data}
         if instance.shared_post is not None:
             shared_post = instance.shared_post
-            shared_post.score = shared_post.number_of_likes*0.20 + shared_post.effective_number_of_comments*0.35 + shared_post.number_of_shares*0.45
+            shared_post.score = shared_post.number_of_likes*0.20 + \
+                shared_post.effective_number_of_comments * \
+                0.35 + shared_post.number_of_shares*0.45
             shared_post.save()
         return super().update(instance, validated_data)

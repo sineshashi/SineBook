@@ -1,18 +1,15 @@
 from django.urls import path
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView,
-)
+from rest_framework_simplejwt import views
 from .views import (AddMemberView, CreatedPagesOfProfile, FollowUnfollowPage, MyFollowedPages,
-                    PageCreateView, PageRUDView, PostFeedView, PostListCreateView, PostRUDView, RegisterUserView, RemoveMemberView, UpdateProfileView,
+                    PageCreateView, PageRUDView, PageSuggestionsView, PostFeedView, PostListCreateView, PostRUDView, RegisterUserView, RemoveMemberView, UpdateProfileView,
                     PostLikeView, CommentView,
                     CommentLikeView, CommentListView, CommentRDView, ListFriends, RetrieveProfileView,
                     FriendRequestView, AcceptCancelRequestView, UnfriendView, RetrieveProfileWithoutId)
 
 
 urlpatterns = [
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('api/token/', views.TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', views.TokenRefreshView.as_view(), name='token_refresh'),
     path('register', RegisterUserView.as_view(), name="register_user"),
     path('myprofile/<int:pk>', UpdateProfileView.as_view(), name="profile"),
     path('myprofile', RetrieveProfileWithoutId.as_view(),
@@ -39,5 +36,6 @@ urlpatterns = [
     path('pages/<int:pk>', CreatedPagesOfProfile.as_view(),
          name="created_pages_by_user"),
     path('pages', MyFollowedPages.as_view(), name="followed_pages"),
-    path('postfeed', PostFeedView.as_view(), name = "post_feed")
+    path('postfeed', PostFeedView.as_view(), name = "post_feed"),
+    path('pagefeed', PageSuggestionsView.as_view(), name="page_suggestions")
 ]

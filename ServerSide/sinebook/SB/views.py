@@ -1,3 +1,4 @@
+import datetime
 from django.contrib.auth.hashers import make_password
 from .models import FieldPages, FriendRequest, HashTag, PagePostList, UserInterest, Page, SBUser, Post, Comment, Tags, Like
 from django.contrib.auth.models import User
@@ -6,7 +7,7 @@ from .serializers import (FriendRequestSerializer, PageCreateSerializer, PageRet
                           PageUpdateByMemberSerializer, PageUpdateDestroyByCreatorSerializer, PostByPageCreateSerializer, PostByPageListSerializer, PostByPageRetrieveByMemberSerializer, PostByPageRetrieveByOtherSerializer, PostByPageUpdateDestroySerializer, PostByUserCreateSerializer, PostByUserListSerializer, PostByUserRetrieveByOtherSerializer, PostByUserRetrieveByPosterSerializer, PostByUserUpdateDestroySerializer, PostLikeSerializer, RegisterSBUserSerializer,
                           RertriveWithOutIDProfileSerialier, RetrievePageByUserSerializer, UpdateProfileSerialier,
                           CommentSerializer,
-                          CommentLRDSerializerForPoster, CommentLRSerializerForUser, CommentRDSerializerForCommentor,
+                          CommentLRSerializerForUser, CommentRDSerializerForCommentor,
                           CommentUpdateSerializer,
                           RetrieveProfileSerializer, ListFriendsSerializer, UserSerializer)
 from rest_framework.exceptions import NotAcceptable, NotAuthenticated
@@ -14,8 +15,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 import json
 from django.core.exceptions import ObjectDoesNotExist
-from datetime import datetime, timedelta
+from .tasks import post_suggestions, profile_suggestions
 from django.utils import timezone
+from .signals import post_suggestions_signal, profile_suggestion_signal
 
 
 class RegisterUserView(generics.CreateAPIView):
@@ -253,14 +255,7 @@ class CommentListView(generics.ListAPIView):
     def get_queryset(self):
         post_id = self.kwargs['pk']
         return Comment.objects.filter(post_id=post_id)
-
-    def get_serializer_class(self):
-        post = Post.objects.get(id=self.kwargs['pk'])
-        if self.request.user.id == post.user_id:
-            return CommentLRDSerializerForPoster
-        else:
-            return CommentLRSerializerForUser
-    serializer_class = get_serializer_class
+    serializer_class = CommentLRSerializerForUser
     permission_classes = [IsAuthenticated]
 
 
@@ -327,13 +322,7 @@ class CommentRDView(generics.RetrieveUpdateDestroyAPIView):
     def get_serializer_class(self):
         requesting_user = self.request.user
         commenting_user = Comment.objects.get(id=self.kwargs['pk'])
-        posting_user = commenting_user.post.user
-        if requesting_user == posting_user:
-            if (self.request.method == 'PUT') or (self.request.method == 'PATCH'):
-                return CommentUpdateSerializer
-            else:
-                return CommentLRDSerializerForPoster
-        elif requesting_user == commenting_user:
+        if requesting_user == commenting_user:
             if (self.request.method == 'PUT') or (self.request.method == 'PATCH'):
                 return CommentUpdateSerializer
             else:
@@ -797,6 +786,9 @@ class PostListCreateView(generics.ListCreateAPIView):
                     'You are not a member or creator of this page.')
         description = request.data.get('description')
         if description is not None:
+            '''
+            Sorting out hashtags from description and fetching or creating them, as well as send the data to serializer.
+            '''
             description = str(description)
             if str(description).count('#') > 10:
                 raise NotAcceptable(
@@ -896,6 +888,9 @@ class PostRUDView(generics.RetrieveUpdateDestroyAPIView):
                     'You are not authorized for this action.')
         description = request.data.get('description')
         if description is not None:
+            '''
+            Sort out hashtags from descriptions and find the same existing tags or create. Then send their id list to serializer.
+            '''
             description = str(description)
             if str(description).count('#') > 10:
                 raise NotAcceptable(
@@ -1007,356 +1002,171 @@ class PostFeedView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def list(self, request, *args, **kwargs):
+        user_interest = UserInterest.objects.prefetch_related('suggested_posts', 'posts_to_be_suggested').get(user_id = self.request.user.id)
+        if timezone.now() > user_interest.suggested_at + datetime.timedelta(minutes=10):
+            posts_to_be_suggested=post_suggestions(userid=self.request.user.id)
+        elif len(user_interest.suggested_posts.all()) == 0:
+            posts_to_be_suggested=post_suggestions(userid=self.request.user.id)
+        else:
+            posts_to_be_suggested = user_interest.posts_to_be_suggested.all()
+        serializer = PostByPageRetrieveByOtherSerializer(posts_to_be_suggested, many=True)
+        data = serializer.data
+        # #Here post by page will serializer all the posts because both types of posts, by user and by page have same models.
+        # #For posts by user, page will be None.
+        for post in posts_to_be_suggested:
+            user_interest.suggested_posts.add(post)
+        user_interest.posts_to_be_suggested.clear()
+        post_suggestions_signal.send(sender=UserInterest.posts_to_be_suggested.through, request=request, instance=user_interest, user=self.request.user)
+        return Response(data, status = status.HTTP_200_OK)
+        
+
+class PageSuggestionsView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
         i = 10
         requesting_userid = self.request.user.id
         requesting_sb_user = SBUser.objects.prefetch_related(
             'friends').get(user_id=requesting_userid)
         user_interest = UserInterest.objects.prefetch_related(
             'suggested_posts', 'followed_pages', 'likes').get(user_id=requesting_userid)
-        recently_suggested_posts = user_interest.suggested_posts.all()
-        user_posts_to_be_suggested = Post.objects.none()
+        pages_to_be_suggested = Page.objects.none()
         friends_list = requesting_sb_user.friends.all()
+        frnds_user_id_list = list(friends_list.values_list('user_id', flat=True))
+        followed_pages = user_interest.followed_pages.all()
+        number_of_recent_page_post_likes = user_interest.likes.filter(
+            post__page__isnull=False).count()
         '''
-        Posts by the friends, posted within 2 days, are being listed and ordered with respect to score
-        as well as recently suggested posts are being excluded.
+        Pages which posts has been liked within his 20 likes, will be suggested.
         '''
-        if len(friends_list) > 0:
-            for friend in friends_list:
-                friend_interest = UserInterest.objects.prefetch_related(
-                    'posts').get(user_id=friend.user_id)
-                friends_recent_posts = friend_interest.posts.filter(
-                    posted_at__gte=timezone.now() - timedelta(days=2)).exclude(who_can_see='None')
-                user_posts_to_be_suggested = user_posts_to_be_suggested.union(
-                    friends_recent_posts)
-        user_posts_to_be_suggested = user_posts_to_be_suggested.difference(
-            recently_suggested_posts)
-        ordered_posts_by_user_to_be_suggested = user_posts_to_be_suggested.order_by(
-            '-score')
-        number_of_suggested_posts_by_user = len(user_posts_to_be_suggested)
-        if number_of_suggested_posts_by_user >= i:
-            suggested_posts = ordered_posts_by_user_to_be_suggested[0:i]
-            serializer = PostByUserRetrieveByOtherSerializer(
-                suggested_posts, many=True)
-            data = serializer.data
-            '''
-            Add the suggested posts to recently suggested posts of the user.
-            '''
-            for post in suggested_posts:
-                user_interest.suggested_posts.add(post)
-            return Response(data, status=status.HTTP_200_OK)
-            #level 1 of posts by user for suggestions is completed.
+        if number_of_recent_page_post_likes > 0:
+            if number_of_recent_page_post_likes > 20:
+                recent_page_likes = user_interest.likes.select_related('post').filter(
+                    post__page__isnull=False).order_by('-liked_at')[0:20]
+            else:
+                recent_page_likes = user_interest.likes.select_related(
+                    'post').filter(post__page__isnull=False).order_by('-liked_at')
+            for like in recent_page_likes:
+                pages_to_be_suggested = pages_to_be_suggested.union(
+                    {like.post.page})
+            pages_to_be_suggested = pages_to_be_suggested.difference(
+                followed_pages)
+        if len(pages_to_be_suggested) >= i:
+            pages_to_be_suggested = pages_to_be_suggested.order_by(
+                '-number_of_followers')[0: i]
+            serializer = RetrievePageByUserSerializer(
+                pages_to_be_suggested, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
         else:
             '''
-            Posts By the pages followed by the user, posted within last 2 days are being listed for suggestions.
+            Those pages which have top 3 hashtags which are in last 10 posts liked by the user.
             '''
-            required_number_of_posts = i - number_of_suggested_posts_by_user
-            page_posts_to_be_suggested = Post.objects.none()
-            if len(user_interest.followed_pages.all()) > 0:
-                for page in user_interest.followed_pages.all():
-                    post_page_instance = PagePostList.objects.prefetch_related(
-                        'posts').get(page_id=page.id)
-                    page_recent_posts = post_page_instance.posts.filter(
-                        posted_at__gte=timezone.now() - timedelta(days=2))
-                    page_posts_to_be_suggested = page_posts_to_be_suggested.union(
-                        page_recent_posts)
-            page_posts_to_be_suggested = page_posts_to_be_suggested.difference(
-                recently_suggested_posts)
-            ordered_posts_by_page_to_be_suggested = page_posts_to_be_suggested.order_by(
-                '-score')
-            number_of_page_posts_to_be_suggested = len(
-                page_posts_to_be_suggested)
-            if number_of_page_posts_to_be_suggested >= required_number_of_posts:
-                required_page_posts = ordered_posts_by_page_to_be_suggested[
-                    0:required_number_of_posts]
-                user_serializer = PostByUserRetrieveByOtherSerializer(
-                    user_posts_to_be_suggested, many=True)
-                page_serializer = PostByPageRetrieveByOtherSerializer(
-                    required_page_posts, many=True)
-                data = user_serializer.data+page_serializer.data
-                suggested_posts = user_posts_to_be_suggested.union(
-                    required_page_posts)
-                for post in suggested_posts:
-                    user_interest.suggested_posts.add(post)
-                return Response(data, status=status.HTTP_200_OK)
-                # level 1 of posts by page, for suggestions, is completed.
+            required_number_of_pages = i - len(pages_to_be_suggested)
+            if number_of_recent_page_post_likes > 10:
+                recent_page_likes = recent_page_likes[0: 10]
+            liked_tags_list = Tags.objects.none()
+            for like in recent_page_likes:
+                try:
+                    liked_tags_list = liked_tags_list.union(
+                        like.post.tags.all(), all=True)
+                except:
+                    continue
+            if len(liked_tags_list) > 0:
+                liked_tags_id_list = list(
+                    liked_tags_list.values_list('id', flat=True))
+                most_liked_tagid = max(
+                    set(liked_tags_id_list), key=liked_tags_id_list.count)
+                most_liked_tags_id_list = [most_liked_tagid]
+                while most_liked_tagid in liked_tags_id_list:
+                    liked_tags_id_list.remove(most_liked_tagid)
+                if len(liked_tags_id_list) > 0:
+                    second_most_liked_tag_id = max(
+                        set(liked_tags_id_list), key=liked_tags_id_list.count)
+                    most_liked_tags_id_list.append(second_most_liked_tag_id)
+                    while second_most_liked_tag_id in liked_tags_id_list:
+                        liked_tags_id_list.remove(second_most_liked_tag_id)
+                    if len(liked_tags_id_list) > 0:
+                        third_most_liked_tag = max(
+                            set(liked_tags_id_list), key=liked_tags_id_list.count)
+                        most_liked_tags_id_list.append(third_most_liked_tag)
+                for tag_id in most_liked_tags_id_list:
+                    hash_tag_instance = HashTag.objects.prefetch_related(
+                        'pages').only('pages').get(tag_id=tag_id)
+                    try:
+                        pages_to_be_suggested = pages_to_be_suggested.union(
+                            hash_tag_instance.pages.all())
+                    except:
+                        continue
+            if len(pages_to_be_suggested) >= required_number_of_pages:
+                pages_to_be_suggested = pages_to_be_suggested.order_by(
+                    '-number_of_followers')[0: required_number_of_pages]
+                serializer = RetrievePageByUserSerializer(
+                    pages_to_be_suggested, many=True)
+                return Response(serializer.data, status=status.HTTP_200_OK)
             else:
                 '''
-                Posts by the pages, whose posted has been liked with in 2 days, posted within 2 days are listed.
+                Pages whose creators are the friends of the user, are being suggested.
                 '''
-                required_number_of_posts = i - \
-                    (number_of_suggested_posts_by_user +
-                     number_of_page_posts_to_be_suggested)
-                page_post_likes = user_interest.likes.exclude(
-                    post__page__isnull=True).order_by('-liked_at')
-                unknown_page_posts_to_be_suggested = Post.objects.none()
-                if len(page_post_likes) > 0:
-                    for like in page_post_likes:
-                        posting_page_id = like.post.page_id
-                        if user_interest.followed_pages.filter(id=posting_page_id).exists() == False:
-                            post_page_list_instance = PagePostList.objects.prefetch_related(
-                                'posts').get(page_id=posting_page_id)
-                            posts_list_by_page = post_page_list_instance.posts.filter(
-                                posted_at__gte=timezone.now() - timedelta(days=2))
-                            unknown_page_posts_to_be_suggested = unknown_page_posts_to_be_suggested.union(
-                                posts_list_by_page)
-                unknown_page_posts_to_be_suggested = unknown_page_posts_to_be_suggested.difference(
-                    recently_suggested_posts, page_posts_to_be_suggested)
-                ordered_unkown_page_posts_to_be_suggested = unknown_page_posts_to_be_suggested.order_by(
-                    '-score')
-                if len(unknown_page_posts_to_be_suggested) >= required_number_of_posts:
-                    required_page_posts = ordered_unkown_page_posts_to_be_suggested[
-                        0:required_number_of_posts]
-                    user_serializer = PostByUserRetrieveByOtherSerializer(
-                        user_posts_to_be_suggested, many=True)
-                    page_serializer_level_1 = PostByPageRetrieveByOtherSerializer(
-                        page_posts_to_be_suggested, many=True)
-                    page_serializer_level_2 = PostByPageRetrieveByOtherSerializer(
-                        required_page_posts, many=True)
-                    data = user_serializer.data+page_serializer_level_1.data+page_serializer_level_2.data
-                    suggested_posts = user_posts_to_be_suggested.union(
-                        page_posts_to_be_suggested, required_page_posts)
-                    for post in suggested_posts:
-                        user_interest.suggested_posts.add(post)
-                    return Response(data, status=status.HTTP_200_OK)
-                    # level 2 of posts by page, to be suggested, has completed.
+                required_number_of_pages = i - len(pages_to_be_suggested)
+                number_of_pages_by_friends = Page.objects.filter(
+                    creator_id__in=frnds_user_id_list).count()
+                if number_of_pages_by_friends >= required_number_of_pages:
+                    pages_to_be_suggested = pages_to_be_suggested.union(Page.objects.filter(creator_id__in=frnds_user_id_list).order_by(
+                        '-number_of_followers').difference(followed_pages)[0: required_number_of_pages])
+                    serializer = RetrievePageByUserSerializer(
+                        pages_to_be_suggested, many=True)
+                    return Response(serializer.data, many=True)
                 else:
                     '''
-                    Posts by user, whose recent posts has been liked by the requesting user within 2 days, posted within last 2 days, are listed.
+                    Pages with the fields which user also has mentioned in his bio.
                     '''
-                    required_number_of_posts = i - \
-                        (number_of_suggested_posts_by_user +
-                         number_of_page_posts_to_be_suggested)
-                    user_post_likes = user_interest.likes.filter(
-                        post__page__isnull=True).order_by('-liked_at')
-                    unknown_user_posts_to_be_suggested = Post.objects.none()
-                    if len(user_post_likes) > 0:
-                        for like in user_post_likes:
-                            posting_user_id = like.post.user_id
-                            if requesting_sb_user.friends.filter(user_id=posting_user_id).exists() == False:
-                                liked_user_interest_instance = UserInterest.objects.prefetch_related(
-                                    'posts').get(user_id=posting_user_id)
-                                posts_list_by_user = liked_user_interest_instance.posts.filter(
-                                    posted_at__gte=timezone.now() - timedelta(days=2)).filter(who_can_see='Public')
-                                unknown_user_posts_to_be_suggested = unknown_user_posts_to_be_suggested.union(
-                                    posts_list_by_user)
-                    unknown_user_posts_to_be_suggested = unknown_user_posts_to_be_suggested.difference(
-                        recently_suggested_posts, user_posts_to_be_suggested)
-                    ordered_unkown_user_posts_to_be_suggested = unknown_user_posts_to_be_suggested.order_by(
-                        '-score')
-                    if len(unknown_user_posts_to_be_suggested) >= required_number_of_posts:
-                        required_user_posts = ordered_unkown_user_posts_to_be_suggested[
-                            0:required_number_of_posts]
-                        user_serializer_level_1 = PostByUserRetrieveByOtherSerializer(
-                            user_posts_to_be_suggested, many=True)
-                        user_serializer_level_2 = PostByUserRetrieveByOtherSerializer(
-                            required_user_posts, many=True)
-                        page_serializer_level_1 = PostByPageRetrieveByOtherSerializer(
-                            page_posts_to_be_suggested, many=True)
-                        page_serializer_level_2 = PostByPageRetrieveByOtherSerializer(
-                            unknown_page_posts_to_be_suggested, many=True)
-                        data = user_serializer_level_1.data+user_serializer_level_2.data + \
-                            page_serializer_level_1.data+page_serializer_level_2.data
-                        suggested_posts = user_posts_to_be_suggested.union(required_user_posts, unknown_page_posts_to_be_suggested,
-                                                                           page_posts_to_be_suggested)
-                        for post in suggested_posts:
-                            user_interest.suggested_posts.add(post)
-                        return Response(data, status=status.HTTP_200_OK)
-                        # level 2 of posts by user, to be suggested, has completed.
-
+                    if number_of_pages_by_friends > 0:
+                        pages_to_be_suggested = pages_to_be_suggested.union(
+                            Page.objects.filter(creator_id__in=frnds_user_id_list).difference(followed_pages))
+                    required_number_of_pages = i - pages_to_be_suggested
+                    user_favourite_fields = requesting_sb_user.favourite_fields.all()
+                    field_matching_pages = Page.objects.none()
+                    for field in user_favourite_fields:
+                        field_page_instance = FieldPages.objects.get(
+                            field=field)
+                        field_matching_pages = field_matching_pages.union(
+                            field_page_instance.pages.all())
+                    if len(field_matching_pages) >= required_number_of_pages:
+                        pages_to_be_suggested = pages_to_be_suggested.union(field_matching_pages.order_by(
+                            '-number_of_followers').difference(followed_pages))[0: required_number_of_pages]
+                        serializer = RetrievePageByUserSerializer(
+                            pages_to_be_suggested, many=True)
+                        return Response(serializer.data, status=status.HTTP_200_OK)
                     else:
                         '''
-                        Posts by those pages which have same hashtags as in recently liked posts by the user have, are being listed.
+                        If 10 pages are still not found, send the data found till now. It can certainly not empty because of favourite fields filled by user.
                         '''
-                        required_number_of_posts = required_number_of_posts - \
-                            len(unknown_user_posts_to_be_suggested)
-                        tags_of_reacted_page_posts = Tags.objects.none()
-                        tagged_page_posts_to_be_suggested = Post.objects.none()
-                        most_liked_tags_id_list = []
-                        if len(page_post_likes) > 0:
-                            if len(page_post_likes) > 10:
-                                page_post_likes = page_post_likes[0:10]
-                            for like in page_post_likes:
-                                if len(like.post.tags.all()) > 0:
-                                    tags_list_of_liked_post = like.post.tags.all()
-                                    tags_of_reacted_page_posts = tags_of_reacted_page_posts.union(
-                                        tags_list_of_liked_post, all=True)
-                            if len(tags_of_reacted_page_posts) > 0:
-                                tags_id_of_reacted_page_posts = list(
-                                    tags_of_reacted_page_posts.values_list('pk', flat=True))
-                                most_liked_tag_id = max(
-                                    set(tags_id_of_reacted_page_posts), key=tags_id_of_reacted_page_posts.count)
-                                most_liked_tags_id_list.append(
-                                    most_liked_tag_id)
-                                while most_liked_tag_id in tags_id_of_reacted_page_posts:
-                                    tags_id_of_reacted_page_posts.remove(
-                                        most_liked_tag_id)
-                                if len(tags_id_of_reacted_page_posts) > 0:
-                                    second_most_liked_tag_id = max(
-                                        set(tags_id_of_reacted_page_posts), key=tags_id_of_reacted_page_posts.count)
-                                    most_liked_tags_id_list.append(
-                                        second_most_liked_tag_id)
-                                    while second_most_liked_tag_id in tags_id_of_reacted_page_posts:
-                                        tags_id_of_reacted_page_posts.remove(
-                                            second_most_liked_tag_id)
-                                    if len(tags_id_of_reacted_page_posts) > 0:
-                                        third_most_liked_tag_id = max(
-                                            set(tags_id_of_reacted_page_posts), key=tags_id_of_reacted_page_posts.count)
-                                        most_liked_tags_id_list.append(
-                                            third_most_liked_tag_id)
-                                for tag_id in most_liked_tags_id_list:
-                                    hash_tag_instance = HashTag.objects.prefetch_related(
-                                        'posts').get(tag_id=tag_id)
-                                    tagged_page_posts_of_instance = hash_tag_instance.posts.filter(
-                                        posted_at__gte=timezone.now() - timedelta(days=2)).exclude(page__isnull=True)
-                                    tagged_page_posts_to_be_suggested = tagged_page_posts_to_be_suggested.union(
-                                        tagged_page_posts_of_instance)
-                        tagged_page_posts_to_be_suggested = tagged_page_posts_to_be_suggested.difference(
-                            recently_suggested_posts, unknown_page_posts_to_be_suggested, page_posts_to_be_suggested)
-                        if len(tagged_page_posts_to_be_suggested) >= required_number_of_posts:
-                            tagged_page_posts_to_be_suggested = tagged_page_posts_to_be_suggested.order_by(
-                                '-score')[0:required_number_of_posts]
-                            user_serializer_level_1 = PostByUserRetrieveByOtherSerializer(
-                                user_posts_to_be_suggested, many=True)
-                            user_serializer_level_2 = PostByUserRetrieveByOtherSerializer(
-                                unknown_user_posts_to_be_suggested, many=True)
-                            page_serializer_level_1 = PostByPageRetrieveByOtherSerializer(
-                                page_posts_to_be_suggested, many=True)
-                            page_serializer_level_2 = PostByPageRetrieveByOtherSerializer(
-                                unknown_page_posts_to_be_suggested, many=True)
-                            page_serializer_level_3 = PostByPageRetrieveByOtherSerializer(
-                                tagged_page_posts_to_be_suggested, many=True)
-                            data = user_serializer_level_1.data+user_serializer_level_2.data+page_serializer_level_1.data + \
-                                page_serializer_level_2.data+page_serializer_level_3.data
-                            suggested_posts = user_posts_to_be_suggested.union(unknown_user_posts_to_be_suggested, unknown_page_posts_to_be_suggested,
-                                                                               page_posts_to_be_suggested, tagged_page_posts_to_be_suggested)
-                            for post in suggested_posts:
-                                user_interest.suggested_posts.add(post)
-                            return Response(data, status=status.HTTP_200_OK)
-                            # level 3 of page posts suggestions completed.
-                        else:
-                            '''
-                            Posts by users, which has same hashtags as the user recently liked, posted within 2 days are listed.
-                            '''
-                            required_number_of_posts = required_number_of_posts - \
-                                len(tagged_page_posts_to_be_suggested)
-                            tagged_user_posts_to_be_suggested = Post.objects.none()
-                            if len(most_liked_tags_id_list) > 0:
-                                for tag_id in most_liked_tags_id_list:
-                                    hash_tag_instance = HashTag.objects.prefetch_related(
-                                        'posts').get(tag_id=tag_id)
-                                    tagged_user_posts_of_instance = hash_tag_instance.posts.filter(posted_at__gte=timezone.now(
-                                    ) - timedelta(days=2)).filter(page__isnull=True).filter(who_can_see='Public')
-                                    tagged_user_posts_to_be_suggested = tagged_user_posts_to_be_suggested.union(
-                                        tagged_user_posts_of_instance)
-                            tagged_user_posts_to_be_suggested = tagged_user_posts_to_be_suggested.difference(
-                                recently_suggested_posts, unknown_user_posts_to_be_suggested, user_posts_to_be_suggested)
-                            if len(tagged_user_posts_to_be_suggested) >= required_number_of_posts:
-                                tagged_user_posts_to_be_suggested = tagged_user_posts_to_be_suggested.order_by(
-                                    '-score')[0:required_number_of_posts]
-                                user_serializer_level_1 = PostByUserRetrieveByOtherSerializer(
-                                    user_posts_to_be_suggested, many=True)
-                                user_serializer_level_2 = PostByUserRetrieveByOtherSerializer(
-                                    unknown_user_posts_to_be_suggested, many=True)
-                                user_serializer_level_3 = PostByUserRetrieveByOtherSerializer(
-                                    tagged_user_posts_to_be_suggested, many=True)
-                                page_serializer_level_1 = PostByPageRetrieveByOtherSerializer(
-                                    page_posts_to_be_suggested, many=True)
-                                page_serializer_level_2 = PostByPageRetrieveByOtherSerializer(
-                                    unknown_page_posts_to_be_suggested, many=True)
-                                page_serializer_level_3 = PostByPageRetrieveByOtherSerializer(
-                                    tagged_page_posts_to_be_suggested, many=True)
-                                data = user_serializer_level_1.data+user_serializer_level_2.data+user_serializer_level_3.data+page_serializer_level_1.data + \
-                                    page_serializer_level_2.data+page_serializer_level_3.data
-                                suggested_posts = user_posts_to_be_suggested.union(unknown_user_posts_to_be_suggested, unknown_page_posts_to_be_suggested,
-                                                                                   page_posts_to_be_suggested, tagged_page_posts_to_be_suggested, tagged_user_posts_to_be_suggested)
-                                for post in suggested_posts:
-                                    user_interest.suggested_posts.add(post)
-                                return Response(data, status=status.HTTP_200_OK)
-                                # level 3 of posts by user suggestions is completed.
-                            else:
-                                '''
-                                Posts by those pages which have same fields as user has selected his favourite field are being listed.
-                                '''
-                                required_number_of_posts = required_number_of_posts - \
-                                    len(tagged_user_posts_to_be_suggested)
-                                requesting_sb_user_fields = requesting_sb_user.favourite_fields.all()
-                                favourite_field_top_pages = Page.objects.none()
-                                for field in requesting_sb_user_fields:
-                                    field_page_instance = FieldPages.objects.prefetch_related(
-                                        'pages').get(field=field)
-                                    if field_page_instance.pages.count() > 3:
-                                        fields_pages = field_page_instance.pages.order_by(
-                                            '-number_of_followers')[0:3]
-                                    else:
-                                        fields_pages = field_page_instance.pages.all()
-                                    favourite_field_top_pages = favourite_field_top_pages.union(
-                                        fields_pages)
-                                if len(favourite_field_top_pages) > 5:
-                                    favourite_field_top_pages = favourite_field_top_pages.order_by(
-                                        '-number_of_followers')[0:5]
-                                favourite_field_top_posts = Post.objects.none()
-                                for page in favourite_field_top_pages:
-                                    post_page_list_instance = PagePostList.objects.prefetch_related(
-                                        'posts').get(page=page)
-                                    post_list_by_page = post_page_list_instance.posts.filter(
-                                        posted_at__gte=timezone.now() - timedelta(days=2))
-                                    favourite_field_top_posts = favourite_field_top_posts.union(
-                                        post_list_by_page)
-                                favourite_field_top_posts = favourite_field_top_posts.difference(
-                                    recently_suggested_posts, tagged_page_posts_to_be_suggested, unknown_page_posts_to_be_suggested, page_posts_to_be_suggested)
-                                if len(favourite_field_top_posts) >= required_number_of_posts:
-                                    '''
-                                    If i number of posts are not obtained send the posts which has been obtained.
-                                    It will be front end which will call for suggestion for pages and profile when empty list is returned.
-                                    '''
-                                    favourite_field_top_posts = favourite_field_top_posts.order_by(
-                                        '-score')[0:required_number_of_posts]
-                                    user_serializer_level_1 = PostByUserRetrieveByOtherSerializer(
-                                        user_posts_to_be_suggested, many=True)
-                                    user_serializer_level_2 = PostByUserRetrieveByOtherSerializer(
-                                        unknown_user_posts_to_be_suggested, many=True)
-                                    user_serializer_level_3 = PostByUserRetrieveByOtherSerializer(
-                                        tagged_user_posts_to_be_suggested, many=True)
-                                    page_serializer_level_1 = PostByPageRetrieveByOtherSerializer(
-                                        page_posts_to_be_suggested, many=True)
-                                    page_serializer_level_2 = PostByPageRetrieveByOtherSerializer(
-                                        unknown_page_posts_to_be_suggested, many=True)
-                                    page_serializer_level_3 = PostByPageRetrieveByOtherSerializer(
-                                        tagged_page_posts_to_be_suggested, many=True)
-                                    page_serializer_level_4 = PostByPageRetrieveByOtherSerializer(
-                                        favourite_field_top_posts, many=True)
-                                    data = user_serializer_level_1.data + user_serializer_level_2.data + user_serializer_level_3.data + \
-                                        page_serializer_level_1.data + page_serializer_level_2.data + \
-                                        page_serializer_level_3.data + page_serializer_level_4.data
-                                    suggested_posts = user_posts_to_be_suggested.union(unknown_user_posts_to_be_suggested, unknown_page_posts_to_be_suggested,
-                                                                                       page_posts_to_be_suggested, tagged_page_posts_to_be_suggested, tagged_user_posts_to_be_suggested, favourite_field_top_posts)
-                                    user_interest.suggested_posts.add(
-                                        suggested_posts)
-                                    return Response(data, status=status.HTTP_200_OK)
-                                    # level4 of posts by page suggestions completed.
-                                else:
-                                    user_serializer_level_1 = PostByUserRetrieveByOtherSerializer(
-                                        user_posts_to_be_suggested, many=True)
-                                    user_serializer_level_2 = PostByUserRetrieveByOtherSerializer(
-                                        unknown_user_posts_to_be_suggested, many=True)
-                                    user_serializer_level_3 = PostByUserRetrieveByOtherSerializer(
-                                        tagged_user_posts_to_be_suggested, many=True)
-                                    page_serializer_level_1 = PostByPageRetrieveByOtherSerializer(
-                                        page_posts_to_be_suggested, many=True)
-                                    page_serializer_level_2 = PostByPageRetrieveByOtherSerializer(
-                                        unknown_page_posts_to_be_suggested, many=True)
-                                    page_serializer_level_3 = PostByPageRetrieveByOtherSerializer(
-                                        tagged_page_posts_to_be_suggested, many=True)
-                                    page_serializer_level_4 = PostByPageRetrieveByOtherSerializer(
-                                        favourite_field_top_posts, many=True)
-                                    data = user_serializer_level_1.data + user_serializer_level_2.data + user_serializer_level_3.data + \
-                                        page_serializer_level_1.data + page_serializer_level_2.data + \
-                                        page_serializer_level_3.data + page_serializer_level_4.data
-                                    suggested_posts = user_posts_to_be_suggested.union(unknown_user_posts_to_be_suggested, unknown_page_posts_to_be_suggested,
-                                                                                       page_posts_to_be_suggested, tagged_page_posts_to_be_suggested, tagged_user_posts_to_be_suggested, favourite_field_top_posts)
-                                    for post in suggested_posts:
-                                        user_interest.suggested_posts.add(post)
-                                    return Response(data, status=status.HTTP_200_OK)
-                                    # last level completed.
+                        if len(field_matching_pages) > 0:
+                            pages_to_be_suggested = pages_to_be_suggested.union(
+                                field_matching_pages)
+                        serializer = RetrievePageByUserSerializer(
+                            pages_to_be_suggested, many=True)
+                        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+class ProfileSuggestionsView(generics.ListAPIView):
+    '''
+    Suggests friends.
+    '''
+    permission_classes = [IsAuthenticated]
+    def list(self, request, *args, **kwargs):
+        user_interest = UserInterest.objects.prefetch_related('profiles_to_be_suggested', 'suggested_profiles').get(user_id = self.request.user.id)
+        if timezone.now() > user_interest.profiles_suggested_at + datetime.timedelta(hours=1):
+            user_interest.suggested_profiles.clear()
+            suggested_profiles = profile_suggestions(userid = self.request.user.id)
+        elif user_interest.suggested_profiles.count() == 0:
+            suggested_profiles = profile_suggestions(userid = self.request.user.id)
+        else:
+            suggested_profiles = user_interest.profiles_to_be_suggested.all()
+        serializer = ListFriendsSerializer(suggested_profiles, many=True)
+        for profile in suggested_profiles:
+            user_interest.suggested_profiles.add(profile)
+        user_interest.profiles_to_be_suggested.clear()
+        profile_suggestion_signal.send(sender=UserInterest.suggested_profiles.through, request=request, user = self.request.user)
+        return Response(serializer.data, status = status.HTTP_200_OK)
+        

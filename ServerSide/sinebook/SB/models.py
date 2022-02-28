@@ -195,6 +195,15 @@ class UserInterest(models.Model):
         Page, blank=True, related_name="followed_pages")
     posts = models.ManyToManyField(Post, blank=True, related_name="posting_user")
     suggested_posts = models.ManyToManyField(Post, blank=True, related_name="suggested_posts")
+    suggested_profiles = models.ManyToManyField(SBUser, blank=True, related_name="suggested_profiles")
+    suggested_pages = models.ManyToManyField(Page, blank=True, related_name="suggested_pages")
+    posts_to_be_suggested = models.ManyToManyField(Post, blank=True, related_name="to_be_suggested_posts")
+    profiles_to_be_suggested = models.ManyToManyField(SBUser, blank=True, related_name="to_be_suggested_profiles")
+    pages_to_be_suggested = models.ManyToManyField(Page, blank=True, related_name="to_be_suggested_pages")
+    suggested_at = models.DateTimeField()
+    profiles_suggested_at = models.DateTimeField()
+    pages_suggested_at = models.DateTimeField()
+
 
 class PagePostList(models.Model):
     page = models.OneToOneField(Page, on_delete=models.CASCADE, blank=True, null=True, related_name="page_with_posts")
@@ -203,3 +212,4 @@ class PagePostList(models.Model):
 class FieldPages(models.Model):
     field = models.OneToOneField(FavouriteField, on_delete=models.CASCADE, related_name="page_field")
     pages = models.ManyToManyField(Page, blank=True, related_name="field_pages")
+
