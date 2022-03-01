@@ -316,8 +316,7 @@ def profile_suggestions(userid):
         mutual_friends_tuple_list.sort(key=key)
         required_tuples = mutual_friends_tuple_list[0:i]
         suggested_mf_list = [ele[0] for ele in required_tuples]
-        for mf in suggested_mf_list:
-            user_interest.profiles_to_be_suggested.add(mf)
+        user_interest.profiles_to_be_suggested.set(suggested_mf_list)
         user_interest.profiles_suggested_at = timezone.now()
         user_interest.save()
         return suggested_mf_list
@@ -336,8 +335,7 @@ def profile_suggestions(userid):
         if len(profiles_recently_liked) >=required_number_of_profiles:
             liked_profiles_to_be_suggested = profiles_recently_liked[0:required_number_of_profiles]
             suggested_profiles = liked_profiles_to_be_suggested.union(suggested_mf_list)
-            for profile in suggested_profiles:
-                user_interest.profiles_to_be_suggested.add(profile)
+            user_interest.profiles_to_be_suggested.set(list(suggested_profiles))
             user_interest.profiles_suggested_at = timezone.now()
             user_interest.save()
             return suggested_profiles
@@ -349,8 +347,7 @@ def profile_suggestions(userid):
             if len(required_profiles_in_city) >= required_number_of_profiles:
                 required_profiles_in_city = required_profiles_in_city[0: required_number_of_profiles]
                 suggested_profiles = required_profiles_in_city.union(suggested_mf_list, liked_profiles_to_be_suggested)
-                for profile in suggested_profiles:
-                    user_interest.profiles_to_be_suggested.add(profile)
+                user_interest.profiles_to_be_suggested.set(list(suggested_profiles))
                 user_interest.profiles_suggested_at = timezone.now()
                 user_interest.save()
                 return suggested_profiles
@@ -363,8 +360,7 @@ def profile_suggestions(userid):
                     #It means if programme does not find new profiles, it will suggest the recently suggested profiles again.
                 except:
                     pass
-                for profile in suggested_profiles:
-                    user_interest.profiles_to_be_suggested.add(profile)
+                user_interest.profiles_to_be_suggested.set(list(suggested_profiles))
                 user_interest.profiles_suggested_at = timezone.now()
                 user_interest.save()
                 return suggested_profiles
@@ -407,11 +403,10 @@ def page_suggestions(userid):
     if len(pages_to_be_suggested) >= i:
         pages_to_be_suggested = pages_to_be_suggested.order_by(
             '-number_of_followers')[0: i]
-        for page in pages_to_be_suggested:
-            user_interest.pages_to_be_suggested.add(page)
-            user_interest.pages_suggested_at = timezone.now()
-            user_interest.save()
-            return pages_to_be_suggested
+        user_interest.pages_to_be_suggested.set(list(pages_to_be_suggested))
+        user_interest.pages_suggested_at = timezone.now()
+        user_interest.save()
+        return pages_to_be_suggested
     else:
         '''
         Those pages which have top 3 hashtags which are in last 10 posts liked by the user.
@@ -456,8 +451,7 @@ def page_suggestions(userid):
         if len(pages_to_be_suggested) >= required_number_of_pages:
             pages_to_be_suggested = pages_to_be_suggested.order_by(
                 '-number_of_followers')[0: required_number_of_pages]
-            for page in pages_to_be_suggested:
-                user_interest.pages_to_be_suggested.add(page)
+            user_interest.pages_to_be_suggested.set(list(pages_to_be_suggested))
             user_interest.pages_suggested_at = timezone.now()
             user_interest.save()
             return pages_to_be_suggested
@@ -470,8 +464,7 @@ def page_suggestions(userid):
                 '-number_of_followers').difference(followed_pages, recently_suggested_pages))
             if len(pages_to_be_suggested) >= required_number_of_pages:
                 pages_to_be_suggested = pages_to_be_suggested[0:required_number_of_pages]
-                for page in pages_to_be_suggested:
-                    user_interest.pages_to_be_suggested.add(page)
+                user_interest.pages_to_be_suggested.set(list(pages_to_be_suggested))
                 user_interest.pages_suggested_at = timezone.now()
                 user_interest.save()
                 return pages_to_be_suggested
@@ -490,8 +483,7 @@ def page_suggestions(userid):
                 pages_to_be_suggested = pages_to_be_suggested.union(field_matching_pages).difference(followed_pages, recently_suggested_pages)
                 if len(field_matching_pages) >= required_number_of_pages:
                     pages_to_be_suggested = pages_to_be_suggested.order_by(-'number_of_followers')[0: required_number_of_pages]
-                    for page in pages_to_be_suggested:
-                        user_interest.pages_to_be_suggested.add(page)
+                    user_interest.pages_to_be_suggested.set(list(pages_to_be_suggested))
                     user_interest.pages_suggested_at = timezone.now()
                     user_interest.save()
                     return pages_to_be_suggested
@@ -503,8 +495,7 @@ def page_suggestions(userid):
                     eligible_pages = recently_suggested_pages.difference(followed_pages)
                     required_pages = eligible_pages.order_by('-number_of_followers')[0:required_number_of_pages]
                     pages_to_be_suggested = pages_to_be_suggested.union(required_pages)
-                    for page in pages_to_be_suggested:
-                        user_interest.pages_to_be_suggested.add(page)
+                    user_interest.pages_to_be_suggested.set(list(pages_to_be_suggested))
                     user_interest.pages_suggested_at = timezone.now()
                     user_interest.save()
                     return pages_to_be_suggested

@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt import views
 from .views import (AddMemberView, CreatedPagesOfProfile, FollowUnfollowPage, MyFollowedPages,
-                    PageCreateView, PageRUDView, PageSuggestionsView, PostFeedView, PostListCreateView, PostRUDView, RegisterUserView, RemoveMemberView, UpdateProfileView,
+                    PageCreateView, PageRUDView, PageSuggestionsView, PostFeedView, PostListCreateView, PostRUDView, ProfileSuggestionsView, RegisterUserView, RemoveMemberView, UpdateProfileView,
                     PostLikeView, CommentView,
                     CommentLikeView, CommentListView, CommentRDView, ListFriends, RetrieveProfileView,
                     FriendRequestView, AcceptCancelRequestView, UnfriendView, RetrieveProfileWithoutId)
@@ -37,5 +37,6 @@ urlpatterns = [
          name="created_pages_by_user"),
     path('pages', MyFollowedPages.as_view(), name="followed_pages"),
     path('postfeed', PostFeedView.as_view(), name = "post_feed"),
-    path('pagefeed', PageSuggestionsView.as_view(), name="page_suggestions")
+    path('pagefeed', PageSuggestionsView.as_view(), name="page_suggestions"),
+    path('profilefeed', ProfileSuggestionsView.as_view(), name="profiles_suggestions")
 ]
