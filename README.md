@@ -25,3 +25,21 @@ SB.tasks has following important functions:
       f) In this stage, it tries to find the top posts by the users, with the hashtags whose posts has been liked by the user most and are not in the 'suggested_posts'. If these completes the quota of 10, it saves them and returns immediately else it forwards to next stage.
       
       g) In this stage, it tries to find the posts by the pages which has same fields which user has specified as favourite fields in his profile. If these completes the quota of 10, it saves them and returns immediately else it returns the posts which it found till now.
+
+  2) page_suggestions(userid): This function takes userid as input and returns 10 pages that are to be suggested as well as saves them in the 'pages_to_be_suggested' field of the model UserInterest.
+  
+      a) It tries to find those pages whose posts has been liked by the user within his last 20 likes and are different from the 'suggested_pages' and 'followed_pages'. If quota of 10 if filled, it immediately returns those 10 pages else it forwards to next step.
+      
+      b) In this stage, it finds top pages with the tags whose posts has been liked most by the user recently as well as these pages are different from 'suggested_pages' and 'followed_pages'. If quota of 10 if filled, it immediately returns those 10 pages else it forwards to next step.
+      
+      c) In this stage, it find pages whose creators are the user's friends and these pages are different from 'suggested_pages' and 'followed_pages'. If quota of 10 if filled, it immediately returns those 10 pages else it forwards to next step.
+      
+      d) In this stage, it finds the pages with the same fields which user has mentioned as favourite fields in his profile and these pages are different from 'suggested_pages' and 'followed_pages'. If quota of 10 if filled, it immediately returns those 10 pages else it returns pages from the 'suggested_posts' to fill the quota.
+      
+  3) profile_suggestions(userid): This suggests profiles to user for friend request. It takes userid as input and returns 10 profiles.
+  
+      a) First of all, it finds users with mutual friends and suggests top 10 profiles from them and are different from the 'suggested_profiles'. If quota of 10 is filled then it returns those profiles else forwards to next step.
+      
+      b) In this stage, it suggests those users whose posts has recently been liked by the user and are different from the 'suggested_profiles'. If quota of 10 is filled then it returns those profiles else forwards to next step.
+      
+      c) In this stage, it suggests those users which are from same city from which user is and and are different from the 'suggested_profiles'. If quota of 10 is filled then it returns those profiles else fills the quoata with 'suggested_profiles'.
