@@ -15,9 +15,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 import json
 from django.core.exceptions import ObjectDoesNotExist
-from .tasks import post_suggestions, profile_suggestions
+from .tasks import post_suggestions, profile_suggestions, page_suggestions
 from django.utils import timezone
-from .signals import post_suggestions_signal, profile_suggestion_signal
+from .signals import post_suggestions_signal, profile_suggestion_signal, page_suggestions_signal
 
 
 class RegisterUserView(generics.CreateAPIView):
@@ -1024,129 +1024,19 @@ class PageSuggestionsView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def list(self, request, *args, **kwargs):
-        i = 10
-        requesting_userid = self.request.user.id
-        requesting_sb_user = SBUser.objects.prefetch_related(
-            'friends').get(user_id=requesting_userid)
-        user_interest = UserInterest.objects.prefetch_related(
-            'suggested_posts', 'followed_pages', 'likes').get(user_id=requesting_userid)
-        pages_to_be_suggested = Page.objects.none()
-        friends_list = requesting_sb_user.friends.all()
-        frnds_user_id_list = list(friends_list.values_list('user_id', flat=True))
-        followed_pages = user_interest.followed_pages.all()
-        number_of_recent_page_post_likes = user_interest.likes.filter(
-            post__page__isnull=False).count()
-        '''
-        Pages which posts has been liked within his 20 likes, will be suggested.
-        '''
-        if number_of_recent_page_post_likes > 0:
-            if number_of_recent_page_post_likes > 20:
-                recent_page_likes = user_interest.likes.select_related('post').filter(
-                    post__page__isnull=False).order_by('-liked_at')[0:20]
-            else:
-                recent_page_likes = user_interest.likes.select_related(
-                    'post').filter(post__page__isnull=False).order_by('-liked_at')
-            for like in recent_page_likes:
-                pages_to_be_suggested = pages_to_be_suggested.union(
-                    {like.post.page})
-            pages_to_be_suggested = pages_to_be_suggested.difference(
-                followed_pages)
-        if len(pages_to_be_suggested) >= i:
-            pages_to_be_suggested = pages_to_be_suggested.order_by(
-                '-number_of_followers')[0: i]
-            serializer = RetrievePageByUserSerializer(
-                pages_to_be_suggested, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+        user_interest = UserInterest.objects.get(user_id = self.request.user.id)
+        if timezone.now() > user_interest.pages_suggested_at + datetime.timedelta(minutes=10):
+            suggested_pages = page_suggestions(userid = self.request.user.id)
+        elif user_interest.suggested_pages.count() == 0:
+            suggested_pages = page_suggestions(userid=self.request.user.id)
         else:
-            '''
-            Those pages which have top 3 hashtags which are in last 10 posts liked by the user.
-            '''
-            required_number_of_pages = i - len(pages_to_be_suggested)
-            if number_of_recent_page_post_likes > 10:
-                recent_page_likes = recent_page_likes[0: 10]
-            liked_tags_list = Tags.objects.none()
-            for like in recent_page_likes:
-                try:
-                    liked_tags_list = liked_tags_list.union(
-                        like.post.tags.all(), all=True)
-                except:
-                    continue
-            if len(liked_tags_list) > 0:
-                liked_tags_id_list = list(
-                    liked_tags_list.values_list('id', flat=True))
-                most_liked_tagid = max(
-                    set(liked_tags_id_list), key=liked_tags_id_list.count)
-                most_liked_tags_id_list = [most_liked_tagid]
-                while most_liked_tagid in liked_tags_id_list:
-                    liked_tags_id_list.remove(most_liked_tagid)
-                if len(liked_tags_id_list) > 0:
-                    second_most_liked_tag_id = max(
-                        set(liked_tags_id_list), key=liked_tags_id_list.count)
-                    most_liked_tags_id_list.append(second_most_liked_tag_id)
-                    while second_most_liked_tag_id in liked_tags_id_list:
-                        liked_tags_id_list.remove(second_most_liked_tag_id)
-                    if len(liked_tags_id_list) > 0:
-                        third_most_liked_tag = max(
-                            set(liked_tags_id_list), key=liked_tags_id_list.count)
-                        most_liked_tags_id_list.append(third_most_liked_tag)
-                for tag_id in most_liked_tags_id_list:
-                    hash_tag_instance = HashTag.objects.prefetch_related(
-                        'pages').only('pages').get(tag_id=tag_id)
-                    try:
-                        pages_to_be_suggested = pages_to_be_suggested.union(
-                            hash_tag_instance.pages.all())
-                    except:
-                        continue
-            if len(pages_to_be_suggested) >= required_number_of_pages:
-                pages_to_be_suggested = pages_to_be_suggested.order_by(
-                    '-number_of_followers')[0: required_number_of_pages]
-                serializer = RetrievePageByUserSerializer(
-                    pages_to_be_suggested, many=True)
-                return Response(serializer.data, status=status.HTTP_200_OK)
-            else:
-                '''
-                Pages whose creators are the friends of the user, are being suggested.
-                '''
-                required_number_of_pages = i - len(pages_to_be_suggested)
-                number_of_pages_by_friends = Page.objects.filter(
-                    creator_id__in=frnds_user_id_list).count()
-                if number_of_pages_by_friends >= required_number_of_pages:
-                    pages_to_be_suggested = pages_to_be_suggested.union(Page.objects.filter(creator_id__in=frnds_user_id_list).order_by(
-                        '-number_of_followers').difference(followed_pages)[0: required_number_of_pages])
-                    serializer = RetrievePageByUserSerializer(
-                        pages_to_be_suggested, many=True)
-                    return Response(serializer.data, many=True)
-                else:
-                    '''
-                    Pages with the fields which user also has mentioned in his bio.
-                    '''
-                    if number_of_pages_by_friends > 0:
-                        pages_to_be_suggested = pages_to_be_suggested.union(
-                            Page.objects.filter(creator_id__in=frnds_user_id_list).difference(followed_pages))
-                    required_number_of_pages = i - pages_to_be_suggested
-                    user_favourite_fields = requesting_sb_user.favourite_fields.all()
-                    field_matching_pages = Page.objects.none()
-                    for field in user_favourite_fields:
-                        field_page_instance = FieldPages.objects.get(
-                            field=field)
-                        field_matching_pages = field_matching_pages.union(
-                            field_page_instance.pages.all())
-                    if len(field_matching_pages) >= required_number_of_pages:
-                        pages_to_be_suggested = pages_to_be_suggested.union(field_matching_pages.order_by(
-                            '-number_of_followers').difference(followed_pages))[0: required_number_of_pages]
-                        serializer = RetrievePageByUserSerializer(
-                            pages_to_be_suggested, many=True)
-                        return Response(serializer.data, status=status.HTTP_200_OK)
-                    else:
-                        '''
-                        If 10 pages are still not found, send the data found till now. It can certainly not empty because of favourite fields filled by user.
-                        '''
-                        if len(field_matching_pages) > 0:
-                            pages_to_be_suggested = pages_to_be_suggested.union(
-                                field_matching_pages)
-                        serializer = RetrievePageByUserSerializer(
-                            pages_to_be_suggested, many=True)
-                        return Response(serializer.data, status=status.HTTP_201_CREATED)
+            suggested_pages = user_interest.pages_to_be_suggested.all()
+        serializer = RetrievePageByUserSerializer(suggested_pages, many=True)
+        for page in suggested_pages:
+            user_interest.suggested_pages.add(page)
+        user_interest.pages_to_be_suggested.clear()
+        page_suggestions_signal.send(sender=None, request=request, user =self.request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class ProfileSuggestionsView(generics.ListAPIView):
@@ -1156,8 +1046,7 @@ class ProfileSuggestionsView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     def list(self, request, *args, **kwargs):
         user_interest = UserInterest.objects.prefetch_related('profiles_to_be_suggested', 'suggested_profiles').get(user_id = self.request.user.id)
-        if timezone.now() > user_interest.profiles_suggested_at + datetime.timedelta(hours=1):
-            user_interest.suggested_profiles.clear()
+        if timezone.now() > user_interest.profiles_suggested_at + datetime.timedelta(minutes=10):
             suggested_profiles = profile_suggestions(userid = self.request.user.id)
         elif user_interest.suggested_profiles.count() == 0:
             suggested_profiles = profile_suggestions(userid = self.request.user.id)

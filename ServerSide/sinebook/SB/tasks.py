@@ -356,6 +356,13 @@ def profile_suggestions(userid):
                 return suggested_profiles
             else:
                 suggested_profiles = required_profiles_in_city.union(suggested_mf_list, liked_profiles_to_be_suggested)
+                required_number_of_profiles = required_number_of_profiles - len(suggested_profiles)
+                required_profiles = recently_suggested_profiles.difference(friends_list)
+                try:
+                    suggested_profiles = suggested_profiles.union(required_profiles[0:required_number_of_profiles])
+                    #It means if programme does not find new profiles, it will suggest the recently suggested profiles again.
+                except:
+                    pass
                 for profile in suggested_profiles:
                     user_interest.profiles_to_be_suggested.add(profile)
                 user_interest.profiles_suggested_at = timezone.now()
@@ -368,3 +375,142 @@ def get_profile_suggestions(self, *args, **kwargs):
     profile_suggestions(userid = userid)
     return "Done"
 
+def page_suggestions(userid):
+    i = 10
+    requesting_userid = userid
+    requesting_sb_user = SBUser.objects.prefetch_related(
+        'friends').get(user_id=requesting_userid)
+    user_interest = UserInterest.objects.prefetch_related(
+        'suggested_posts', 'followed_pages', 'likes').get(user_id=requesting_userid)
+    pages_to_be_suggested = Page.objects.none()
+    friends_list = requesting_sb_user.friends.all()
+    frnds_user_id_list = list(friends_list.values_list('user_id', flat=True))
+    followed_pages = user_interest.followed_pages.all()
+    number_of_recent_page_post_likes = user_interest.likes.filter(
+        post__page__isnull=False).count()
+    recently_suggested_pages = user_interest.suggested_pages.all()
+    '''
+    Pages which posts has been liked within his 20 likes, will be suggested.
+    '''
+    if number_of_recent_page_post_likes > 0:
+        if number_of_recent_page_post_likes > 20:
+            recent_page_likes = user_interest.likes.select_related('post').filter(
+                post__page__isnull=False).order_by('-liked_at')[0:20]
+        else:
+            recent_page_likes = user_interest.likes.select_related(
+                'post').filter(post__page__isnull=False).order_by('-liked_at')
+        for like in recent_page_likes:
+            pages_to_be_suggested = pages_to_be_suggested.union(
+                {like.post.page})
+        pages_to_be_suggested = pages_to_be_suggested.difference(
+            followed_pages, recently_suggested_pages)
+    if len(pages_to_be_suggested) >= i:
+        pages_to_be_suggested = pages_to_be_suggested.order_by(
+            '-number_of_followers')[0: i]
+        for page in pages_to_be_suggested:
+            user_interest.pages_to_be_suggested.add(page)
+            user_interest.pages_suggested_at = timezone.now()
+            user_interest.save()
+            return pages_to_be_suggested
+    else:
+        '''
+        Those pages which have top 3 hashtags which are in last 10 posts liked by the user.
+        '''
+        required_number_of_pages = i - len(pages_to_be_suggested)
+        if number_of_recent_page_post_likes > 10:
+            recent_page_likes = recent_page_likes[0: 10]
+        liked_tags_list = Tags.objects.none()
+        for like in recent_page_likes:
+            try:
+                liked_tags_list = liked_tags_list.union(
+                    like.post.tags.all(), all=True)
+            except:
+                continue
+        if len(liked_tags_list) > 0:
+            liked_tags_id_list = list(
+                liked_tags_list.values_list('id', flat=True))
+            most_liked_tagid = max(
+                set(liked_tags_id_list), key=liked_tags_id_list.count)
+            most_liked_tags_id_list = [most_liked_tagid]
+            while most_liked_tagid in liked_tags_id_list:
+                liked_tags_id_list.remove(most_liked_tagid)
+            if len(liked_tags_id_list) > 0:
+                second_most_liked_tag_id = max(
+                    set(liked_tags_id_list), key=liked_tags_id_list.count)
+                most_liked_tags_id_list.append(second_most_liked_tag_id)
+                while second_most_liked_tag_id in liked_tags_id_list:
+                    liked_tags_id_list.remove(second_most_liked_tag_id)
+                if len(liked_tags_id_list) > 0:
+                    third_most_liked_tag = max(
+                        set(liked_tags_id_list), key=liked_tags_id_list.count)
+                    most_liked_tags_id_list.append(third_most_liked_tag)
+            for tag_id in most_liked_tags_id_list:
+                hash_tag_instance = HashTag.objects.prefetch_related(
+                    'pages').only('pages').get(tag_id=tag_id)
+                try:
+                    pages_to_be_suggested = pages_to_be_suggested.union(
+                        hash_tag_instance.pages.all())
+                except:
+                    continue
+            pages_to_be_suggested = pages_to_be_suggested.difference(followed_pages, recently_suggested_pages)
+        if len(pages_to_be_suggested) >= required_number_of_pages:
+            pages_to_be_suggested = pages_to_be_suggested.order_by(
+                '-number_of_followers')[0: required_number_of_pages]
+            for page in pages_to_be_suggested:
+                user_interest.pages_to_be_suggested.add(page)
+            user_interest.pages_suggested_at = timezone.now()
+            user_interest.save()
+            return pages_to_be_suggested
+        else:
+            '''
+            Pages whose creators are the friends of the user, are being suggested.
+            '''
+            required_number_of_pages = i - len(pages_to_be_suggested)
+            pages_to_be_suggested = pages_to_be_suggested.union(Page.objects.filter(creator_id__in=frnds_user_id_list).order_by(
+                '-number_of_followers').difference(followed_pages, recently_suggested_pages))
+            if len(pages_to_be_suggested) >= required_number_of_pages:
+                pages_to_be_suggested = pages_to_be_suggested[0:required_number_of_pages]
+                for page in pages_to_be_suggested:
+                    user_interest.pages_to_be_suggested.add(page)
+                user_interest.pages_suggested_at = timezone.now()
+                user_interest.save()
+                return pages_to_be_suggested
+            else:
+                '''
+                Pages with the fields which user also has mentioned in his bio.
+                '''
+                required_number_of_pages = i - len(pages_to_be_suggested)
+                user_favourite_fields = requesting_sb_user.favourite_fields.all()
+                field_matching_pages = Page.objects.none()
+                for field in user_favourite_fields:
+                    field_page_instance = FieldPages.objects.get(
+                        field=field)
+                    field_matching_pages = field_matching_pages.union(
+                        field_page_instance.pages.all())
+                pages_to_be_suggested = pages_to_be_suggested.union(field_matching_pages).difference(followed_pages, recently_suggested_pages)
+                if len(field_matching_pages) >= required_number_of_pages:
+                    pages_to_be_suggested = pages_to_be_suggested.order_by(-'number_of_followers')[0: required_number_of_pages]
+                    for page in pages_to_be_suggested:
+                        user_interest.pages_to_be_suggested.add(page)
+                    user_interest.pages_suggested_at = timezone.now()
+                    user_interest.save()
+                    return pages_to_be_suggested
+                else:
+                    '''
+                    If 10 pages are still not found, send previously suggested profiles. 
+                    '''
+                    required_number_of_pages = required_number_of_pages - len(pages_to_be_suggested)
+                    eligible_pages = recently_suggested_pages.difference(followed_pages)
+                    required_pages = eligible_pages.order_by('-number_of_followers')[0:required_number_of_pages]
+                    pages_to_be_suggested = pages_to_be_suggested.union(required_pages)
+                    for page in pages_to_be_suggested:
+                        user_interest.pages_to_be_suggested.add(page)
+                    user_interest.pages_suggested_at = timezone.now()
+                    user_interest.save()
+                    return pages_to_be_suggested
+
+@shared_task(bind=True)
+def get_page_suggestions(self, *args, **kwargs):
+    userid = kwargs['userid']
+    page_suggestions(userid = userid)
+    return "Done"
