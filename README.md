@@ -12,11 +12,16 @@ SB.models has following models:
 SB.tasks has following important functions:
   1) post_suggestion(userid): This fuction takes userid as input and return 10 posts which are to be suggested as well as stores them in the 'posts_to_be_suggested' in the UserInterest model. This function has following stages:
   
-  a) This function tries to find the posts, posted by the friends within last two days, which are not in the 'suggested_posts' of UserInterest. If it gets 10 such posts, it immediately saves them in the posts_to_be_suggested column of the UserInterest model. If it does not find 10 posts, it forwards to next stage.
+      a) This function tries to find the posts, posted by the friends within last two days, which are not in the 'suggested_posts' of UserInterest. If it gets 10 such posts, it immediately saves them in the posts_to_be_suggested column of the UserInterest model. If it does not find 10 posts, it forwards to next stage.
 
-  b) In this stage, it tries to find the posts by the pages, which are followed by the user and the posts are not in the 'suggested_posts'. If these completes the quota of 10 posts, it saves them and returns immediately else it forwards to next stage.
-c) In this stage, it tries to find those posts by the pages whose posts has recently been liked and are not in the 'suggested_posts'. If these completes the quota of 10, it saves them and returns immediately else it forwards to next stage.
-  d) In this stage, it tries to find those posts by the users whose posts has recently been liked and are not in the 'suggested_posts'. If these completes the quota of 10, it saves them and returns immediately else it forwards to next stage.
-  e) In this stage, it tries to find the top posts by the pages, with the hashtags whose posts has been liked by the user most and are not in the 'suggested_posts'. If these completes the quota of 10, it saves them and returns immediately else it forwards to next stage.
-  f) In this stage, it tries to find the top posts by the users, with the hashtags whose posts has been liked by the user most and are not in the 'suggested_posts'. If these completes the quota of 10, it saves them and returns immediately else it forwards to next stage.
-  g) In this stage, it tries to find the posts by the pages which has same fields which user has specified as favourite fields in his profile. If these completes the quota of 10, it saves them and returns immediately else it returns the posts which it found till now.
+      b) In this stage, it tries to find the posts by the pages, which are followed by the user and the posts are not in the 'suggested_posts'. If these completes the quota of 10 posts, it saves them and returns immediately else it forwards to next stage.
+      
+      c) In this stage, it tries to find those posts by the pages whose posts has recently been liked and are not in the 'suggested_posts'. If these completes the quota of 10, it saves them and returns immediately else it forwards to next stage.
+      
+      d) In this stage, it tries to find those posts by the users whose posts has recently been liked and are not in the 'suggested_posts'. If these completes the quota of 10, it saves them and returns immediately else it forwards to next stage.
+      
+      e) In this stage, it tries to find the top posts by the pages, with the hashtags whose posts has been liked by the user most and are not in the 'suggested_posts'. If these completes the quota of 10, it saves them and returns immediately else it forwards to next stage.
+      
+      f) In this stage, it tries to find the top posts by the users, with the hashtags whose posts has been liked by the user most and are not in the 'suggested_posts'. If these completes the quota of 10, it saves them and returns immediately else it forwards to next stage.
+      
+      g) In this stage, it tries to find the posts by the pages which has same fields which user has specified as favourite fields in his profile. If these completes the quota of 10, it saves them and returns immediately else it returns the posts which it found till now.
