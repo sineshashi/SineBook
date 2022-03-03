@@ -194,9 +194,9 @@ class UserInterest(models.Model):
     followed_pages = models.ManyToManyField(
         Page, blank=True, related_name="followed_pages")
     posts = models.ManyToManyField(Post, blank=True, related_name="posting_user")
-    suggested_posts = models.ManyToManyField(Post, blank=True, related_name="suggested_posts")
-    suggested_profiles = models.ManyToManyField(SBUser, blank=True, related_name="suggested_profiles")
-    suggested_pages = models.ManyToManyField(Page, blank=True, related_name="suggested_pages")
+    suggested_posts = models.ManyToManyField(Post, blank=True, related_name="suggested_posts", through='SuggestedPost')
+    suggested_profiles = models.ManyToManyField(SBUser, blank=True, related_name="suggested_profiles", through='SuggestedProfile')
+    suggested_pages = models.ManyToManyField(Page, blank=True, related_name="suggested_pages", through='SuggestedPage')
     posts_to_be_suggested = models.ManyToManyField(Post, blank=True, related_name="to_be_suggested_posts")
     profiles_to_be_suggested = models.ManyToManyField(SBUser, blank=True, related_name="to_be_suggested_profiles")
     pages_to_be_suggested = models.ManyToManyField(Page, blank=True, related_name="to_be_suggested_pages")
@@ -213,3 +213,17 @@ class FieldPages(models.Model):
     field = models.OneToOneField(FavouriteField, on_delete=models.CASCADE, related_name="page_field")
     pages = models.ManyToManyField(Page, blank=True, related_name="field_pages")
 
+class SuggestedPost(models.Model):
+    user_interest = models.ForeignKey(UserInterest, on_delete=models.CASCADE, related_name="user_interest_instance_for_posts")
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="suggested_post_to_user")
+    suggested_at = models.DateTimeField(auto_now_add=True)
+
+class SuggestedProfile(models.Model):
+    user_interest = models.ForeignKey(UserInterest, on_delete=models.CASCADE, related_name="user_interest_instance_for_profiles")
+    profile = models.ForeignKey(SBUser, on_delete=models.CASCADE, related_name="suggested_profile_to_user")
+    suggested_at = models.DateTimeField(auto_now_add=True)
+
+class SuggestedPage(models.Model):
+    user_interest = models.ForeignKey(UserInterest, on_delete=models.CASCADE, related_name="user_interest_instance_for_pages")
+    page = models.ForeignKey(Page, on_delete=models.CASCADE, related_name="suggested_page_to_user")
+    suggested_at = models.DateTimeField(auto_now_add=True)

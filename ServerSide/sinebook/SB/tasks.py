@@ -1,5 +1,6 @@
 from celery import shared_task
-from .models import FieldPages, HashTag, PagePostList, UserInterest, Page, SBUser, Post, Tags
+
+from .models import FieldPages, HashTag, PagePostList, SuggestedPage, SuggestedPost, SuggestedProfile, UserInterest, Page, SBUser, Post, Tags
 from datetime import datetime, timedelta
 from django.utils import timezone
 
@@ -13,6 +14,9 @@ def post_suggestions(userid):
     recently_suggested_posts = user_interest.suggested_posts.all()
     user_posts_to_be_suggested = Post.objects.none()
     friends_list = requesting_sb_user.friends.all()
+    #delete record of posts which has been suggested two days ago to the user.
+    user_interest.suggested_posts.through.objects.filter(suggested_at__lt = timezone.now()-timedelta(days=2)).delete()
+    #Above line ensures the deletion of useless data.
     '''
     Posts by the friends, posted within 2 days, are being listed and ordered with respect to score
     as well as recently suggested posts are being excluded.
@@ -283,6 +287,10 @@ def post_suggestions(userid):
 @shared_task(bind=True)
 def get_post_suggestions(self, *args, **kwargs):
     userid = kwargs['userid']
+    user_interest = UserInterest.objects.only('suggested_posts').get(user_id = userid)
+    suggested_posts = kwargs['suggested_posts']
+    for post in suggested_posts:
+        user_interest.suggested_posts.add(post)
     post_suggestions(userid=userid)
     return "Done"
 
@@ -300,6 +308,8 @@ def profile_suggestions(userid):
     user_interest = UserInterest.objects.get(user_id = userid)
     recently_suggested_profiles = user_interest.suggested_profiles.all()
     mutual_friends_tuple_set = set()
+    #Deleting the records of profile suggestions made two days ago.
+    user_interest.suggested_profiles.through.objects.filter(suggested_at__lt = timezone.now()-timedelta(days=2)).delete()
     if len(friends_list) > 0:
         for friend in friends_list:
             frnd_list_of_frnd = friend.friends.all()
@@ -368,6 +378,10 @@ def profile_suggestions(userid):
 @shared_task(bind=True)
 def get_profile_suggestions(self, *args, **kwargs):
     userid = kwargs['userid']
+    user_interest = UserInterest.objects.only('suggested_profiles').get(user_id = userid)
+    suggested_profiles = kwargs['suggested_profiles']
+    for profile in suggested_profiles:
+        user_interest.suggested_profiles.add(profile)
     profile_suggestions(userid = userid)
     return "Done"
 
@@ -385,6 +399,7 @@ def page_suggestions(userid):
     number_of_recent_page_post_likes = user_interest.likes.filter(
         post__page__isnull=False).count()
     recently_suggested_pages = user_interest.suggested_pages.all()
+    user_interest.suggested_pages.through.objects.filter(suggested_at__lt = timezone.now()-timedelta(days=2)).delete()
     '''
     Pages which posts has been liked within his 20 likes, will be suggested.
     '''
@@ -503,5 +518,11 @@ def page_suggestions(userid):
 @shared_task(bind=True)
 def get_page_suggestions(self, *args, **kwargs):
     userid = kwargs['userid']
+    user_interest = UserInterest.objects.only('suggested_pages').get(user_id = userid)
+    suggested_pages = kwargs['suggested_pages']
+    for page in suggested_pages:
+        user_interest.suggested_pages.add(page)
+    
     page_suggestions(userid = userid)
     return "Done"
+

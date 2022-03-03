@@ -1013,10 +1013,8 @@ class PostFeedView(generics.ListAPIView):
         data = serializer.data
         # #Here post by page will serializer all the posts because both types of posts, by user and by page have same models.
         # #For posts by user, page will be None.
-        for post in posts_to_be_suggested:
-            user_interest.suggested_posts.add(post)
+        post_suggestions_signal.send(sender=UserInterest.posts_to_be_suggested.through, request=request, instance=user_interest, user= self.request.user, suggested_posts = posts_to_be_suggested)
         user_interest.posts_to_be_suggested.clear()
-        post_suggestions_signal.send(sender=UserInterest.posts_to_be_suggested.through, request=request, instance=user_interest, user=self.request.user)
         return Response(data, status = status.HTTP_200_OK)
         
 
@@ -1025,17 +1023,13 @@ class PageSuggestionsView(generics.ListAPIView):
 
     def list(self, request, *args, **kwargs):
         user_interest = UserInterest.objects.get(user_id = self.request.user.id)
-        if timezone.now() > user_interest.pages_suggested_at + datetime.timedelta(minutes=10):
-            suggested_pages = page_suggestions(userid = self.request.user.id)
-        elif user_interest.suggested_pages.count() == 0:
+        if user_interest.suggested_pages.count() == 0:
             suggested_pages = page_suggestions(userid=self.request.user.id)
         else:
             suggested_pages = user_interest.pages_to_be_suggested.all()
         serializer = RetrievePageByUserSerializer(suggested_pages, many=True)
-        for page in suggested_pages:
-            user_interest.suggested_pages.add(page)
+        page_suggestions_signal.send(sender=None, request=request, user =self.request.user, suggested_pages=suggested_pages)
         user_interest.pages_to_be_suggested.clear()
-        page_suggestions_signal.send(sender=None, request=request, user =self.request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -1046,16 +1040,12 @@ class ProfileSuggestionsView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     def list(self, request, *args, **kwargs):
         user_interest = UserInterest.objects.prefetch_related('profiles_to_be_suggested', 'suggested_profiles').get(user_id = self.request.user.id)
-        if timezone.now() > user_interest.profiles_suggested_at + datetime.timedelta(minutes=10):
-            suggested_profiles = profile_suggestions(userid = self.request.user.id)
-        elif user_interest.suggested_profiles.count() == 0:
+        if user_interest.suggested_profiles.count() == 0:
             suggested_profiles = profile_suggestions(userid = self.request.user.id)
         else:
             suggested_profiles = user_interest.profiles_to_be_suggested.all()
         serializer = ListFriendsSerializer(suggested_profiles, many=True)
-        for profile in suggested_profiles:
-            user_interest.suggested_profiles.add(profile)
+        profile_suggestion_signal.send(sender=UserInterest.suggested_profiles.through, request=request, user = self.request.user, suggested_profiles=suggested_profiles)
         user_interest.profiles_to_be_suggested.clear()
-        profile_suggestion_signal.send(sender=UserInterest.suggested_profiles.through, request=request, user = self.request.user)
         return Response(serializer.data, status = status.HTTP_200_OK)
         
