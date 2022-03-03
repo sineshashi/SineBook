@@ -1,6 +1,6 @@
 from celery import shared_task
 
-from .models import FieldPages, HashTag, PagePostList, SuggestedPage, SuggestedPost, SuggestedProfile, UserInterest, Page, SBUser, Post, Tags
+from .models import FieldPages, HashTag, PagePostList, UserInterest, Page, SBUser, Post, Tags
 from datetime import datetime, timedelta
 from django.utils import timezone
 

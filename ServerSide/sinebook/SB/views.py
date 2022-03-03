@@ -1,6 +1,6 @@
 import datetime
 from django.contrib.auth.hashers import make_password
-from .models import FieldPages, FriendRequest, HashTag, PagePostList, UserInterest, Page, SBUser, Post, Comment, Tags, Like
+from .models import FriendRequest, UserInterest, Page, SBUser, Post, Comment, Tags
 from django.contrib.auth.models import User
 from rest_framework import generics, status
 from .serializers import (FriendRequestSerializer, PageCreateSerializer, PageRetrieveSerializerByMember,
